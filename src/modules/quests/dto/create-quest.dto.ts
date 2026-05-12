@@ -105,6 +105,18 @@ export class CreateQuestDto {
   @IsString()
   businessId?: string;
 
+  @ApiPropertyOptional({ description: 'Thumbnail image URL' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  imageUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Hero / cover image URL' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  coverImageUrl?: string;
+
   @ApiProperty({ type: () => [CreateQuestLocationDto] })
   @IsArray()
   @ArrayMinSize(1)

@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthenticatedUser } from '../../common/auth/auth-user.interface';
 import { AppRole } from '../../common/auth/roles.enum';
@@ -11,6 +23,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { CreateQuestDto } from './dto/create-quest.dto';
 import { ListQuestsDto, ListQuestsNearbyDto } from './dto/list-quests.dto';
 import { QuestDto } from './dto/quest.dto';
+import { UpdateQuestDto } from './dto/update-quest.dto';
 import { QuestsService } from './quests.service';
 
 @ApiTags('quests')
@@ -52,6 +65,23 @@ export class QuestsController {
     return this.questsService.create(user.id, dto);
   }
 
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a quest (author or admin/moderator only)' })
+  async update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param() params: IdParamDto,
+    @Body() dto: UpdateQuestDto,
+  ): Promise<QuestDto> {
+    return this.questsService.update({ id: user.id, role: user.role }, params.id, dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a quest (author or admin/moderator only)' })
+  async delete(@CurrentUser() user: AuthenticatedUser, @Param() params: IdParamDto): Promise<void> {
+    await this.questsService.delete({ id: user.id, role: user.role }, params.id);
+  }
+
   @Post(':id/start')
   @ApiOperation({ summary: 'Mark a quest as started for the current user' })
   async start(
@@ -67,8 +97,14 @@ export class QuestsController {
   async complete(
     @CurrentUser() user: AuthenticatedUser,
     @Param() params: IdParamDto,
-  ): Promise<{ ok: true }> {
-    await this.questsService.complete(user.id, params.id);
-    return { ok: true };
+  ): Promise<{
+    ok: true;
+    xpAwarded: number;
+    leveledUp: boolean;
+    newLevel: number;
+    streakDays: number;
+  }> {
+    const outcome = await this.questsService.complete(user.id, params.id);
+    return { ok: true, ...outcome };
   }
 }

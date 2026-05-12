@@ -1,19 +1,54 @@
-import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { AuthenticatedUser } from '../../common/auth/auth-user.interface';
 import { ApiPaginatedResponse } from '../../common/decorators/api-paginated-response.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { AuthenticatedUser } from '../../common/auth/auth-user.interface';
 import { IdParamDto } from '../../common/dto/id-param.dto';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { UploadResponseDto } from '../uploads/dto/upload-response.dto';
+import { UploadsService } from '../uploads/uploads.service';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UserStatsDto } from './dto/user-stats.dto';
 import { UserDto } from './dto/user.dto';
 import { UsersService } from './users.service';
+
+interface UploadedFileLike {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+  size: number;
+}
+
+function isUploadedFile(value: unknown): value is UploadedFileLike {
+  if (typeof value !== 'object' || value === null) return false;
+  const buffer = Reflect.get(value, 'buffer');
+  const originalname = Reflect.get(value, 'originalname');
+  const mimetype = Reflect.get(value, 'mimetype');
+  return (
+    Buffer.isBuffer(buffer) && typeof originalname === 'string' && typeof mimetype === 'string'
+  );
+}
 
 @ApiTags('users')
 @ApiBearerAuth('access-token')
 @Controller({ path: 'users', version: '1' })
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly uploadsService: UploadsService,
+  ) {}
 
   @Get('me')
   @ApiOperation({ summary: 'Get current authenticated user' })
@@ -30,6 +65,44 @@ export class UsersController {
     return this.usersService.updateProfile(user.id, dto);
   }
 
+  @Get('me/stats')
+  @ApiOperation({ summary: 'Get gamification stats for the current user' })
+  async getMyStats(@CurrentUser() user: AuthenticatedUser): Promise<UserStatsDto> {
+    return this.usersService.getStats(user.id);
+  }
+
+  @Post('me/avatar')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiOperation({ summary: 'Upload (or replace) the current user avatar' })
+  async uploadAvatar(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: unknown,
+  ): Promise<UploadResponseDto & { user: UserDto }> {
+    if (!isUploadedFile(file)) throw new BadRequestException('No file uploaded');
+
+    const stored = await this.uploadsService.upload({
+      buffer: file.buffer,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+    });
+    const updated = await this.usersService.setAvatarUrl(user.id, stored.url);
+
+    return {
+      filename: stored.filename,
+      url: stored.url,
+      sizeBytes: stored.sizeBytes,
+      mimeType: stored.mimeType,
+      user: updated,
+    };
+  }
+
   @Get()
   @ApiOperation({ summary: 'List users (paginated)' })
   @ApiPaginatedResponse(UserDto)
@@ -41,5 +114,11 @@ export class UsersController {
   @ApiOperation({ summary: 'Get user by id' })
   async getById(@Param() params: IdParamDto): Promise<UserDto> {
     return this.usersService.getById(params.id);
+  }
+
+  @Get(':id/stats')
+  @ApiOperation({ summary: 'Get public gamification stats for a user' })
+  async getStats(@Param() params: IdParamDto): Promise<UserStatsDto> {
+    return this.usersService.getStats(params.id);
   }
 }

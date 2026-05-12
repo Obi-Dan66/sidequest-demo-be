@@ -4,7 +4,9 @@ import { FriendshipStatus } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/auth/auth-user.interface';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { IdParamDto } from '../../common/dto/id-param.dto';
+import { ActivityItemDto } from './dto/activity-item.dto';
 import { CreateFriendshipDto } from './dto/create-friendship.dto';
+import { FriendDto } from './dto/friend.dto';
 import { FriendshipDto } from './dto/friendship.dto';
 import { FriendshipsService } from './friendships.service';
 
@@ -22,6 +24,37 @@ export class FriendshipsController {
     @Query('status') status?: FriendshipStatus,
   ): Promise<FriendshipDto[]> {
     return this.friendshipsService.listMine(user.id, status);
+  }
+
+  @Get('friends')
+  @ApiOperation({ summary: 'List accepted friends as resolved users' })
+  async listFriends(@CurrentUser() user: AuthenticatedUser): Promise<FriendDto[]> {
+    return this.friendshipsService.listFriends(user.id);
+  }
+
+  @Get('pending')
+  @ApiOperation({ summary: 'List pending incoming friend requests' })
+  async listPending(@CurrentUser() user: AuthenticatedUser): Promise<FriendDto[]> {
+    return this.friendshipsService.listPendingIncoming(user.id);
+  }
+
+  @Get('activity')
+  @ApiOperation({ summary: 'Recent activity from my friends (quest completions + achievements)' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    schema: { type: 'integer', minimum: 1, maximum: 100 },
+  })
+  async activity(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('limit') limit?: string,
+  ): Promise<ActivityItemDto[]> {
+    let resolved = 30;
+    if (limit) {
+      const parsed = Number.parseInt(limit, 10);
+      if (Number.isFinite(parsed) && parsed > 0) resolved = parsed;
+    }
+    return this.friendshipsService.activityFeed(user.id, resolved);
   }
 
   @Post()

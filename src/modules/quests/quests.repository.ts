@@ -58,6 +58,13 @@ export class QuestsRepository {
     });
   }
 
+  delete(id: string): Promise<QuestWithLocations> {
+    return this.prisma.quest.delete({
+      where: { id },
+      include: { locations: { orderBy: { orderIndex: 'asc' } } },
+    });
+  }
+
   /**
    * Bounding-box prefilter using indexed (latitude, longitude) columns.
    * Caller refines distance using GeoService.haversineMeters().

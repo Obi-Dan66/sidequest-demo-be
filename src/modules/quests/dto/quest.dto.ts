@@ -9,6 +9,8 @@ export class QuestLocationDto {
   @ApiProperty() longitude!: number;
   @ApiProperty() radiusM!: number;
   @ApiProperty() orderIndex!: number;
+  @ApiPropertyOptional({ description: 'Distance in meters from the requested point' })
+  distanceM?: number;
 }
 
 export class QuestDto {
@@ -21,6 +23,8 @@ export class QuestDto {
   @ApiProperty({ enum: QuestStatus }) status!: QuestStatus;
   @ApiProperty() xpReward!: number;
   @ApiPropertyOptional() estimatedDurationMin?: number | null;
+  @ApiPropertyOptional() imageUrl?: string | null;
+  @ApiPropertyOptional() coverImageUrl?: string | null;
   @ApiPropertyOptional() categoryId?: string | null;
   @ApiPropertyOptional() businessId?: string | null;
   @ApiPropertyOptional() authorId?: string | null;
@@ -29,6 +33,10 @@ export class QuestDto {
   @ApiProperty() updatedAt!: Date;
   @ApiPropertyOptional({ type: () => [QuestLocationDto] })
   locations?: QuestLocationDto[];
+  @ApiPropertyOptional({
+    description: 'Distance in meters to the nearest location (nearby search)',
+  })
+  distanceM?: number;
 
   static fromEntity(quest: Quest, locations?: QuestLocationDto[]): QuestDto {
     return {
@@ -41,6 +49,8 @@ export class QuestDto {
       status: quest.status,
       xpReward: quest.xpReward,
       estimatedDurationMin: quest.estimatedDurationMin,
+      imageUrl: quest.imageUrl,
+      coverImageUrl: quest.coverImageUrl,
       categoryId: quest.categoryId,
       businessId: quest.businessId,
       authorId: quest.authorId,

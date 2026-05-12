@@ -16,6 +16,7 @@ export class UserDto {
   @ApiProperty() xp!: number;
   @ApiProperty() level!: number;
   @ApiProperty() questsDone!: number;
+  @ApiProperty() streakDays!: number;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 
@@ -32,6 +33,7 @@ export class UserDto {
       xp: user.xp,
       level: user.level,
       questsDone: user.questsDone,
+      streakDays: user.streakDays,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

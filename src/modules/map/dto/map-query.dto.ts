@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { QuestDifficulty } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { IsInt, IsNumber, IsOptional, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 
 /**
  * Bounding-box query for map viewport requests.
@@ -46,4 +47,19 @@ export class MapBoundsQueryDto {
   @Min(1)
   @Max(1000)
   limit?: number;
+
+  @ApiPropertyOptional({ description: 'Filter pins by quest category slug' })
+  @IsOptional()
+  @IsString()
+  categorySlug?: string;
+
+  @ApiPropertyOptional({ enum: QuestDifficulty })
+  @IsOptional()
+  @IsEnum(QuestDifficulty)
+  difficulty?: QuestDifficulty;
+
+  @ApiPropertyOptional({ description: 'Restrict pin kinds (comma-separated): QUEST, BUSINESS' })
+  @IsOptional()
+  @IsString()
+  kinds?: string;
 }

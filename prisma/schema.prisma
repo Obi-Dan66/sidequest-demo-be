@@ -92,9 +92,11 @@ model User {
   status       UserStatus @default(ACTIVE)
 
   // Gamification
-  xp        Int @default(0)
-  level     Int @default(1)
-  questsDone Int @default(0)
+  xp                   Int       @default(0)
+  level                Int       @default(1)
+  questsDone           Int       @default(0)
+  streakDays           Int       @default(0)
+  lastQuestCompletedAt DateTime?
 
   // Auth metadata
   lastLoginAt        DateTime?
@@ -123,12 +125,13 @@ model User {
 // ----------------------------------------------------------------------------
 
 model QuestCategory {
-  id          String  @id @default(cuid())
-  slug        String  @unique
-  name        String
-  description String?
-  iconUrl     String?
-  colorHex    String?
+  id            String  @id @default(cuid())
+  slug          String  @unique
+  name          String
+  description   String?
+  iconUrl       String?
+  coverImageUrl String?
+  colorHex      String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -148,6 +151,8 @@ model Quest {
   status      QuestStatus     @default(DRAFT)
   xpReward    Int             @default(50)
   estimatedDurationMin Int?
+  imageUrl      String?
+  coverImageUrl String?
 
   // Author/curator
   authorId String?

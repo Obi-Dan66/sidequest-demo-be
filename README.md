@@ -119,12 +119,13 @@ yarn start:dev
 `yarn install` runs the `prepare` script which installs husky's git hooks. On every commit the following runs:
 
 ```sh
-yarn format     # prettier --write
-git add .       # stage any reformatting
-yarn lint       # eslint check - fails the commit if it fails
+yarn format      # prettier --write
+git add .        # stage any reformatting
+yarn typecheck   # tsc --noEmit (includes prisma/seed.ts)
+yarn lint        # eslint check
 ```
 
-If `yarn lint` exits non-zero, the commit is blocked.
+If `yarn typecheck` or `yarn lint` exits non-zero, the commit is blocked.
 
 ---
 

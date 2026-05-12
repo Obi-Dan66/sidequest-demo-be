@@ -1,8 +1,10 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthenticatedUser } from '../../common/auth/auth-user.interface';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { UserDto } from '../users/dto/user.dto';
+import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
 import { AuthTokensDto } from './dto/auth-tokens.dto';
 import { LoginDto } from './dto/login.dto';
@@ -12,7 +14,17 @@ import { RegisterDto } from './dto/register.dto';
 @ApiTags('auth')
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly usersService: UsersService,
+  ) {}
+
+  @Get('me')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Return the currently authenticated user' })
+  async me(@CurrentUser() user: AuthenticatedUser): Promise<UserDto> {
+    return this.usersService.getById(user.id);
+  }
 
   @Public()
   @Post('register')
