@@ -1,0 +1,341 @@
+// SideQuest - Prisma schema
+// Conventions:
+//  - Primary keys are CUIDs (string) for portability and offline-friendliness.
+//  - Timestamps: createdAt + updatedAt on every persisted entity.
+//  - Soft-delete is intentionally avoided in MVP. Add `deletedAt` per-table only if required.
+//  - Geolocation is stored as separate `latitude` / `longitude` Float columns for MVP.
+//    Future: enable PostGIS and migrate to a `geography(Point, 4326)` column.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// Enums
+// ----------------------------------------------------------------------------
+
+enum UserRole {
+  USER
+  MODERATOR
+  ADMIN
+  BUSINESS_OWNER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum QuestDifficulty {
+  EASY
+  MEDIUM
+  HARD
+  EPIC
+}
+
+enum QuestStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum QuestCompletionStatus {
+  STARTED
+  COMPLETED
+  ABANDONED
+  EXPIRED
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
+
+enum AchievementType {
+  QUEST_COUNT
+  XP_THRESHOLD
+  CATEGORY_EXPLORER
+  LOCATION_VISITS
+  SOCIAL
+  STREAK
+  CUSTOM
+}
+
+enum BusinessStatus {
+  PENDING_VERIFICATION
+  VERIFIED
+  REJECTED
+  SUSPENDED
+}
+
+// ----------------------------------------------------------------------------
+// Users & auth
+// ----------------------------------------------------------------------------
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  username     String     @unique
+  passwordHash String
+  displayName  String?
+  avatarUrl    String?
+  bio          String?
+  role         UserRole   @default(USER)
+  status       UserStatus @default(ACTIVE)
+
+  // Gamification
+  xp        Int @default(0)
+  level     Int @default(1)
+  questsDone Int @default(0)
+
+  // Auth metadata
+  lastLoginAt        DateTime?
+  refreshTokenHash   String?
+  emailVerifiedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  questCompletions   QuestCompletion[]
+  achievements       UserAchievement[]
+  authoredQuests     Quest[]            @relation("QuestAuthor")
+  sentFriendRequests Friendship[]       @relation("FriendshipRequester")
+  receivedFriendRequests Friendship[]   @relation("FriendshipAddressee")
+  businesses         Business[]         @relation("BusinessOwner")
+  notifications      Notification[]
+
+  @@index([role])
+  @@index([status])
+  @@index([level])
+}
+
+// ----------------------------------------------------------------------------
+// Quests
+// ----------------------------------------------------------------------------
+
+model QuestCategory {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  description String?
+  iconUrl     String?
+  colorHex    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quests Quest[]
+
+  @@index([slug])
+}
+
+model Quest {
+  id          String          @id @default(cuid())
+  slug        String          @unique
+  title       String
+  summary     String?
+  description String
+  difficulty  QuestDifficulty @default(EASY)
+  status      QuestStatus     @default(DRAFT)
+  xpReward    Int             @default(50)
+  estimatedDurationMin Int?
+
+  // Author/curator
+  authorId String?
+  author   User?    @relation("QuestAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  // Category
+  categoryId String?
+  category   QuestCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  // Optional business linkage (sponsorship / partnership)
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+
+  publishedAt DateTime?
+  startsAt    DateTime?
+  endsAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  locations   QuestLocation[]
+  completions QuestCompletion[]
+
+  @@index([status])
+  @@index([difficulty])
+  @@index([categoryId])
+  @@index([businessId])
+  @@index([publishedAt])
+}
+
+// A quest can have one or many locations.
+// For MVP we store lat/lng directly; PostGIS migration is documented in SKILL.md.
+model QuestLocation {
+  id        String @id @default(cuid())
+  questId   String
+  quest     Quest  @relation(fields: [questId], references: [id], onDelete: Cascade)
+
+  name      String?
+  address   String?
+  latitude  Float
+  longitude Float
+  radiusM   Int    @default(50) // proximity radius required to "check in"
+  orderIndex Int   @default(0)  // sequence within multi-stop quests
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([questId])
+  @@index([latitude, longitude])
+}
+
+model QuestCompletion {
+  id      String                @id @default(cuid())
+  userId  String
+  questId String
+  status  QuestCompletionStatus @default(STARTED)
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  xpAwarded   Int       @default(0)
+
+  // Snapshot of check-in proof - flexible JSON payload (timestamps, lat/lng pairs, photo refs)
+  proof Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quest Quest @relation(fields: [questId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questId])
+  @@index([status])
+  @@index([userId])
+  @@index([questId])
+}
+
+// ----------------------------------------------------------------------------
+// Achievements
+// ----------------------------------------------------------------------------
+
+model Achievement {
+  id          String          @id @default(cuid())
+  slug        String          @unique
+  name        String
+  description String
+  iconUrl     String?
+  type        AchievementType
+  // Flexible criteria (e.g. { "minQuests": 10, "categorySlug": "history" }).
+  // Evaluated by the gamification engine in code.
+  criteria    Json
+  xpBonus     Int             @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  unlockedBy UserAchievement[]
+
+  @@index([type])
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime    @default(now())
+  progress      Json?
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+  @@index([achievementId])
+}
+
+// ----------------------------------------------------------------------------
+// Social - Friendships
+// ----------------------------------------------------------------------------
+
+model Friendship {
+  id          String           @id @default(cuid())
+  requesterId String
+  addresseeId String
+  status      FriendshipStatus @default(PENDING)
+
+  respondedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requester User @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee User @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, addresseeId])
+  @@index([requesterId])
+  @@index([addresseeId])
+  @@index([status])
+}
+
+// ----------------------------------------------------------------------------
+// Businesses
+// ----------------------------------------------------------------------------
+
+model Business {
+  id          String         @id @default(cuid())
+  slug        String         @unique
+  name        String
+  description String?
+  websiteUrl  String?
+  logoUrl     String?
+  status      BusinessStatus @default(PENDING_VERIFICATION)
+
+  // Primary location for the business (optional).
+  address   String?
+  latitude  Float?
+  longitude Float?
+
+  ownerId String?
+  owner   User?   @relation("BusinessOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quests Quest[]
+
+  @@index([status])
+  @@index([latitude, longitude])
+}
+
+// ----------------------------------------------------------------------------
+// Notifications (delivery-agnostic record, future BullMQ jobs hydrate transports)
+// ----------------------------------------------------------------------------
+
+model Notification {
+  id      String  @id @default(cuid())
+  userId  String
+  type    String  // e.g. "quest.completed", "friend.request", "achievement.unlocked"
+  title   String
+  body    String?
+  // Free-form payload consumed by clients to build deep-links / actions.
+  data    Json?
+  readAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([type])
+}

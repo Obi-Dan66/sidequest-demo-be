@@ -1,0 +1,6 @@
+export enum AppRole {
+  USER = 'USER',
+  MODERATOR = 'MODERATOR',
+  ADMIN = 'ADMIN',
+  BUSINESS_OWNER = 'BUSINESS_OWNER',
+}
