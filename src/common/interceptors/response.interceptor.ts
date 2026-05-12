@@ -8,7 +8,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function isAlreadyEnveloped(value: unknown): value is ApiSuccessResponse<unknown> {
-  return isObject(value) && value.success === true && 'data' in value;
+  return isObject(value) && value.success === true;
 }
 
 function isPaginatedShape(

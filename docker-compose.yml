@@ -35,7 +35,8 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-replace-me-refresh}
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       API_PREFIX: ${API_PREFIX:-api}
       API_DEFAULT_VERSION: ${API_DEFAULT_VERSION:-1}
     ports:

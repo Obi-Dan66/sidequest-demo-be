@@ -1,0 +1,1356 @@
+openapi: 3.0.0
+paths:
+  /api/v1/auth/me:
+    get:
+      operationId: AuthController_me
+      summary: Return the currently authenticated user
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - auth
+      security:
+        - access-token: []
+  /api/v1/auth/register:
+    post:
+      operationId: AuthController_register
+      summary: Register a new user account
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterDto"
+      responses:
+        "201":
+          description: ""
+      tags:
+        - auth
+  /api/v1/auth/login:
+    post:
+      operationId: AuthController_login
+      summary: Authenticate and obtain access + refresh tokens
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginDto"
+      responses:
+        "200":
+          description: ""
+      tags:
+        - auth
+  /api/v1/auth/refresh:
+    post:
+      operationId: AuthController_refresh
+      summary: Exchange a refresh token for a new token pair
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenDto"
+      responses:
+        "200":
+          description: ""
+      tags:
+        - auth
+  /api/v1/auth/logout:
+    post:
+      operationId: AuthController_logout
+      summary: Revoke the current refresh token for the user
+      parameters: []
+      responses:
+        "204":
+          description: ""
+      tags:
+        - auth
+      security:
+        - access-token: []
+  /api/v1/users/me:
+    get:
+      operationId: UsersController_getMe
+      summary: Get current authenticated user
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - users
+      security:
+        - access-token: []
+    patch:
+      operationId: UsersController_updateMe
+      summary: Update current authenticated user profile
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserDto"
+      responses:
+        "200":
+          description: ""
+      tags:
+        - users
+      security:
+        - access-token: []
+  /api/v1/users/me/stats:
+    get:
+      operationId: UsersController_getMyStats
+      summary: Get gamification stats for the current user
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - users
+      security:
+        - access-token: []
+  /api/v1/users/me/avatar:
+    post:
+      operationId: UsersController_uploadAvatar
+      summary: Upload (or replace) the current user avatar
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: ""
+      tags:
+        - users
+      security:
+        - access-token: []
+  /api/v1/users:
+    get:
+      operationId: UsersController_list
+      summary: List users (paginated)
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: limit
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 20
+            type: number
+        - name: search
+          required: false
+          in: query
+          description: Free-text search query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UserDto"
+                  meta:
+                    type: object
+                    properties:
+                      pagination:
+                        $ref: "#/components/schemas/PaginationMeta"
+      tags:
+        - users
+      security:
+        - access-token: []
+  /api/v1/users/{id}:
+    get:
+      operationId: UsersController_getById
+      summary: Get user by id
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags:
+        - users
+      security:
+        - access-token: []
+  /api/v1/users/{id}/stats:
+    get:
+      operationId: UsersController_getStats
+      summary: Get public gamification stats for a user
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags:
+        - users
+      security:
+        - access-token: []
+  /api/v1/uploads:
+    post:
+      operationId: UploadsController_upload
+      summary: Upload a file (image)
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: ""
+      tags:
+        - uploads
+      security:
+        - access-token: []
+  /api/v1/quests:
+    get:
+      operationId: QuestsController_list
+      summary: List quests (filterable, paginated)
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: limit
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 20
+            type: number
+        - name: search
+          required: false
+          in: query
+          description: Free-text search query
+          schema:
+            type: string
+        - name: status
+          required: false
+          in: query
+          schema:
+            enum:
+              - DRAFT
+              - PUBLISHED
+              - ARCHIVED
+            type: string
+        - name: difficulty
+          required: false
+          in: query
+          schema:
+            enum:
+              - EASY
+              - MEDIUM
+              - HARD
+              - EPIC
+            type: string
+        - name: categorySlug
+          required: false
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/QuestDto"
+                  meta:
+                    type: object
+                    properties:
+                      pagination:
+                        $ref: "#/components/schemas/PaginationMeta"
+      tags:
+        - quests
+      security:
+        - access-token: []
+    post:
+      operationId: QuestsController_create
+      summary: Create a new quest (admin/moderator/business owner)
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateQuestDto"
+      responses:
+        "201":
+          description: ""
+      tags:
+        - quests
+      security:
+        - access-token: []
+  /api/v1/quests/nearby:
+    get:
+      operationId: QuestsController_listNearby
+      summary: List quests near coordinates (radius search)
+      parameters:
+        - name: lat
+          required: false
+          in: query
+          schema:
+            minimum: -90
+            maximum: 90
+            type: number
+        - name: lng
+          required: false
+          in: query
+          schema:
+            minimum: -180
+            maximum: 180
+            type: number
+        - name: radiusM
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100000
+            default: 5000
+            type: number
+        - name: difficulty
+          required: false
+          in: query
+          schema:
+            enum:
+              - EASY
+              - MEDIUM
+              - HARD
+              - EPIC
+            type: string
+        - name: categorySlug
+          required: false
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags:
+        - quests
+      security:
+        - access-token: []
+  /api/v1/quests/{id}:
+    get:
+      operationId: QuestsController_getById
+      summary: Get quest by id
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags:
+        - quests
+      security:
+        - access-token: []
+    patch:
+      operationId: QuestsController_update
+      summary: Update a quest (author or admin/moderator only)
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateQuestDto"
+      responses:
+        "200":
+          description: ""
+      tags:
+        - quests
+      security:
+        - access-token: []
+    delete:
+      operationId: QuestsController_delete
+      summary: Delete a quest (author or admin/moderator only)
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+      responses:
+        "204":
+          description: ""
+      tags:
+        - quests
+      security:
+        - access-token: []
+  /api/v1/quests/{id}/start:
+    post:
+      operationId: QuestsController_start
+      summary: Mark a quest as started for the current user
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+      responses:
+        "201":
+          description: ""
+      tags:
+        - quests
+      security:
+        - access-token: []
+  /api/v1/quests/{id}/complete:
+    post:
+      operationId: QuestsController_complete
+      summary: Mark a quest as completed for the current user
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+      responses:
+        "201":
+          description: ""
+      tags:
+        - quests
+      security:
+        - access-token: []
+  /api/v1/quest-categories:
+    get:
+      operationId: QuestCategoriesController_list
+      summary: List all quest categories
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - quests
+  /api/v1/quest-categories/{slug}:
+    get:
+      operationId: QuestCategoriesController_getBySlug
+      summary: Get a quest category by slug
+      parameters:
+        - name: slug
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags:
+        - quests
+  /api/v1/achievements:
+    get:
+      operationId: AchievementsController_listAll
+      summary: List all achievement definitions
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - achievements
+      security:
+        - access-token: []
+  /api/v1/achievements/me:
+    get:
+      operationId: AchievementsController_listMine
+      summary: List achievements unlocked by the current user
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - achievements
+      security:
+        - access-token: []
+  /api/v1/map/pins:
+    get:
+      operationId: MapController_getPins
+      summary: Get map pins inside a viewport bounding box
+      parameters:
+        - name: south
+          required: false
+          in: query
+          schema:
+            minimum: -90
+            maximum: 90
+            type: number
+        - name: north
+          required: false
+          in: query
+          schema:
+            minimum: -90
+            maximum: 90
+            type: number
+        - name: west
+          required: false
+          in: query
+          schema:
+            minimum: -180
+            maximum: 180
+            type: number
+        - name: east
+          required: false
+          in: query
+          schema:
+            minimum: -180
+            maximum: 180
+            type: number
+        - name: limit
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 1000
+            default: 200
+            type: number
+        - name: categorySlug
+          required: false
+          in: query
+          description: Filter pins by quest category slug
+          schema:
+            type: string
+        - name: difficulty
+          required: false
+          in: query
+          schema:
+            enum:
+              - EASY
+              - MEDIUM
+              - HARD
+              - EPIC
+            type: string
+        - name: kinds
+          required: false
+          in: query
+          description: "Restrict pin kinds (comma-separated): QUEST, BUSINESS"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags:
+        - map
+  /api/v1/friendships:
+    get:
+      operationId: FriendshipsController_listMine
+      summary: List my friendships (filterable by status)
+      parameters:
+        - name: status
+          required: false
+          in: query
+          schema:
+            enum:
+              - PENDING
+              - ACCEPTED
+              - BLOCKED
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags:
+        - friendships
+      security:
+        - access-token: []
+    post:
+      operationId: FriendshipsController_request
+      summary: Send a friend request
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFriendshipDto"
+      responses:
+        "201":
+          description: ""
+      tags:
+        - friendships
+      security:
+        - access-token: []
+  /api/v1/friendships/friends:
+    get:
+      operationId: FriendshipsController_listFriends
+      summary: List accepted friends as resolved users
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - friendships
+      security:
+        - access-token: []
+  /api/v1/friendships/pending:
+    get:
+      operationId: FriendshipsController_listPending
+      summary: List pending incoming friend requests
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - friendships
+      security:
+        - access-token: []
+  /api/v1/friendships/activity:
+    get:
+      operationId: FriendshipsController_activity
+      summary: Recent activity from my friends (quest completions + achievements)
+      parameters:
+        - name: limit
+          required: false
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: ""
+      tags:
+        - friendships
+      security:
+        - access-token: []
+  /api/v1/friendships/{id}/accept:
+    post:
+      operationId: FriendshipsController_accept
+      summary: Accept a pending friend request
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+      responses:
+        "201":
+          description: ""
+      tags:
+        - friendships
+      security:
+        - access-token: []
+  /api/v1/friendships/block/{userId}:
+    post:
+      operationId: FriendshipsController_block
+      summary: Block another user
+      parameters:
+        - name: userId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: ""
+      tags:
+        - friendships
+      security:
+        - access-token: []
+  /api/v1/friendships/{id}:
+    delete:
+      operationId: FriendshipsController_remove
+      summary: Remove a friendship
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags:
+        - friendships
+      security:
+        - access-token: []
+  /api/v1/businesses:
+    get:
+      operationId: BusinessesController_list
+      summary: List businesses (paginated)
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: limit
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 20
+            type: number
+        - name: search
+          required: false
+          in: query
+          description: Free-text search query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/BusinessDto"
+                  meta:
+                    type: object
+                    properties:
+                      pagination:
+                        $ref: "#/components/schemas/PaginationMeta"
+      tags:
+        - businesses
+      security:
+        - access-token: []
+    post:
+      operationId: BusinessesController_create
+      summary: Register a new business
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBusinessDto"
+      responses:
+        "201":
+          description: ""
+      tags:
+        - businesses
+      security:
+        - access-token: []
+  /api/v1/businesses/{id}:
+    get:
+      operationId: BusinessesController_getById
+      summary: Get business by id
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags:
+        - businesses
+      security:
+        - access-token: []
+  /api/v1/notifications:
+    get:
+      operationId: NotificationsController_list
+      summary: List my notifications (paginated)
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: limit
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 20
+            type: number
+        - name: search
+          required: false
+          in: query
+          description: Free-text search query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/NotificationDto"
+                  meta:
+                    type: object
+                    properties:
+                      pagination:
+                        $ref: "#/components/schemas/PaginationMeta"
+      tags:
+        - notifications
+      security:
+        - access-token: []
+  /api/v1/notifications/{id}/read:
+    patch:
+      operationId: NotificationsController_markRead
+      summary: Mark a notification as read
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+      responses:
+        "204":
+          description: ""
+      tags:
+        - notifications
+      security:
+        - access-token: []
+  /api/v1/notifications/read-all:
+    patch:
+      operationId: NotificationsController_markAllRead
+      summary: Mark all my notifications as read
+      parameters: []
+      responses:
+        "204":
+          description: ""
+      tags:
+        - notifications
+      security:
+        - access-token: []
+  /api/v1/health:
+    get:
+      operationId: HealthController_check
+      summary: API liveness probe
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - health
+  /api/v1/health/db:
+    get:
+      operationId: HealthController_db
+      summary: Database connectivity probe
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - health
+info:
+  title: SideQuest API
+  description: Gamified exploration platform - REST API
+  version: "1"
+  contact: {}
+tags:
+  - name: auth
+    description: ""
+  - name: users
+    description: ""
+  - name: quests
+    description: ""
+  - name: achievements
+    description: ""
+  - name: map
+    description: ""
+  - name: friendships
+    description: ""
+  - name: businesses
+    description: ""
+  - name: notifications
+    description: ""
+  - name: uploads
+    description: ""
+  - name: health
+    description: ""
+servers: []
+components:
+  securitySchemes:
+    access-token:
+      scheme: bearer
+      bearerFormat: JWT
+      type: http
+      description: Paste the access token returned by /auth/login
+  schemas:
+    RegisterDto:
+      type: object
+      properties:
+        email:
+          type: string
+          example: wanderer@prague.cz
+        username:
+          type: string
+          example: praguewanderer
+        password:
+          type: string
+          example: CorrectHorseBatteryStaple!
+        displayName:
+          type: string
+      required:
+        - email
+        - username
+        - password
+    LoginDto:
+      type: object
+      properties:
+        email:
+          type: string
+          example: wanderer@prague.cz
+        password:
+          type: string
+      required:
+        - email
+        - password
+    RefreshTokenDto:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+      required:
+        - refreshToken
+    UpdateUserDto:
+      type: object
+      properties:
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+        bio:
+          type: string
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: number
+        limit:
+          type: number
+        total:
+          type: number
+        totalPages:
+          type: number
+        hasNext:
+          type: boolean
+        hasPrev:
+          type: boolean
+      required:
+        - page
+        - limit
+        - total
+        - totalPages
+        - hasNext
+        - hasPrev
+    UserDto:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: object
+        avatarUrl:
+          type: object
+        bio:
+          type: object
+        role:
+          type: string
+          enum:
+            - USER
+            - MODERATOR
+            - ADMIN
+            - BUSINESS_OWNER
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - SUSPENDED
+            - DELETED
+        xp:
+          type: number
+        level:
+          type: number
+        questsDone:
+          type: number
+        streakDays:
+          type: number
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - email
+        - username
+        - role
+        - status
+        - xp
+        - level
+        - questsDone
+        - streakDays
+        - createdAt
+        - updatedAt
+    QuestLocationDto:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: object
+        address:
+          type: object
+        latitude:
+          type: number
+        longitude:
+          type: number
+        radiusM:
+          type: number
+        orderIndex:
+          type: number
+        distanceM:
+          type: number
+          description: Distance in meters from the requested point
+      required:
+        - id
+        - latitude
+        - longitude
+        - radiusM
+        - orderIndex
+    QuestDto:
+      type: object
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        title:
+          type: string
+        summary:
+          type: object
+        description:
+          type: string
+        difficulty:
+          type: string
+          enum:
+            - EASY
+            - MEDIUM
+            - HARD
+            - EPIC
+        status:
+          type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
+            - ARCHIVED
+        xpReward:
+          type: number
+        estimatedDurationMin:
+          type: object
+        imageUrl:
+          type: object
+        coverImageUrl:
+          type: object
+        categoryId:
+          type: object
+        businessId:
+          type: object
+        authorId:
+          type: object
+        publishedAt:
+          type: object
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuestLocationDto"
+        distanceM:
+          type: number
+          description: Distance in meters to the nearest location (nearby search)
+      required:
+        - id
+        - slug
+        - title
+        - description
+        - difficulty
+        - status
+        - xpReward
+        - createdAt
+        - updatedAt
+    CreateQuestLocationDto:
+      type: object
+      properties:
+        name:
+          type: string
+        address:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        radiusM:
+          type: number
+          default: 50
+        orderIndex:
+          type: number
+          default: 0
+      required:
+        - latitude
+        - longitude
+    CreateQuestDto:
+      type: object
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        description:
+          type: string
+        difficulty:
+          type: string
+          enum:
+            - EASY
+            - MEDIUM
+            - HARD
+            - EPIC
+          default: EASY
+        xpReward:
+          type: number
+          default: 50
+        estimatedDurationMin:
+          type: number
+        categoryId:
+          type: string
+        businessId:
+          type: string
+        imageUrl:
+          type: string
+          description: Thumbnail image URL
+        coverImageUrl:
+          type: string
+          description: Hero / cover image URL
+        locations:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateQuestLocationDto"
+      required:
+        - slug
+        - title
+        - description
+        - locations
+    UpdateQuestDto:
+      type: object
+      properties:
+        title:
+          type: string
+        summary:
+          type: string
+        description:
+          type: string
+        difficulty:
+          type: string
+          enum:
+            - EASY
+            - MEDIUM
+            - HARD
+            - EPIC
+        status:
+          type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
+            - ARCHIVED
+        xpReward:
+          type: number
+        estimatedDurationMin:
+          type: number
+        categoryId:
+          type: string
+        imageUrl:
+          type: string
+        coverImageUrl:
+          type: string
+        startsAt:
+          type: string
+        endsAt:
+          type: string
+    CreateFriendshipDto:
+      type: object
+      properties:
+        addresseeId:
+          type: string
+          description: User id of the addressee
+      required:
+        - addresseeId
+    BusinessDto:
+      type: object
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: object
+        websiteUrl:
+          type: object
+        logoUrl:
+          type: object
+        status:
+          type: string
+          enum:
+            - PENDING_VERIFICATION
+            - VERIFIED
+            - REJECTED
+            - SUSPENDED
+        address:
+          type: object
+        latitude:
+          type: object
+        longitude:
+          type: object
+        ownerId:
+          type: object
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - slug
+        - name
+        - status
+        - createdAt
+        - updatedAt
+    CreateBusinessDto:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        websiteUrl:
+          type: string
+        logoUrl:
+          type: string
+        address:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+      required:
+        - slug
+        - name
+    NotificationDto:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        body:
+          type: object
+        data:
+          type: object
+        readAt:
+          type: object
+        createdAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - userId
+        - type
+        - title
+        - createdAt

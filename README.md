@@ -53,6 +53,9 @@ src/
 prisma/
   schema.prisma                 # data model
   seed.ts                       # idempotent dev seed
+scripts/
+  generate-openapi.ts           # produces openapi.yaml from live Nest controllers
+openapi.yaml                    # checked-in OpenAPI 3.0 spec (regenerated on commit)
 docker-compose.yml              # postgres + api
 Dockerfile                      # multi-stage production image
 ```
@@ -83,8 +86,13 @@ docker compose up -d --build
 This starts Postgres and the API, runs `prisma migrate deploy` on boot, and exposes:
 
 - API: <http://localhost:3000/api/v1/...>
+- Health: <http://localhost:3000/api/v1/health>
 - Swagger UI: <http://localhost:3000/api/docs>
 - WebSocket: `ws://localhost:3000/realtime`
+
+`FRONTEND_URL` defaults to `http://localhost:5173` inside the container too,
+so a locally-running Vite frontend can hit the dockerised API without any
+extra config.
 
 ### 4. Run locally (Node, against Dockerised Postgres)
 
@@ -113,19 +121,103 @@ yarn start:dev
 | `yarn prisma:studio`  | Prisma Studio (DB GUI)                           |
 | `yarn prisma:seed`    | Idempotent seed for dev                          |
 | `yarn db:reset`       | Drop + recreate DB + re-run migrations           |
+| `yarn openapi:generate` | Regenerate the checked-in `openapi.yaml`       |
 
 ### 6. Pre-commit hook (husky)
 
 `yarn install` runs the `prepare` script which installs husky's git hooks. On every commit the following runs:
 
 ```sh
-yarn format      # prettier --write
-git add .        # stage any reformatting
-yarn typecheck   # tsc --noEmit (includes prisma/seed.ts)
-yarn lint        # eslint check
+yarn format            # prettier --write
+yarn openapi:generate  # regenerate openapi.yaml from live controllers/DTOs
+git add .              # stage any reformatting + new openapi.yaml
+yarn typecheck         # tsc --noEmit (includes prisma/seed.ts and scripts/)
+yarn lint              # eslint check
 ```
 
-If `yarn typecheck` or `yarn lint` exits non-zero, the commit is blocked.
+If `yarn typecheck`, `yarn lint`, or `yarn openapi:generate` exits non-zero,
+the commit is blocked. The OpenAPI generator boots `AppModule` with
+`SKIP_PRISMA_CONNECT=1`, so it does **not** require a running Postgres -
+commits work offline.
+
+`openapi.yaml` is checked into the repo as the canonical machine-readable
+contract: frontend clients can codegen against it, and PR diffs make API
+changes reviewable at a glance.
+
+---
+
+## Frontend integration (local)
+
+The backend is built to talk to a Vite-based React frontend on the same machine.
+Out of the box the configuration assumes:
+
+| Service  | URL                              |
+|----------|----------------------------------|
+| Backend  | `http://localhost:3000`          |
+| API base | `http://localhost:3000/api/v1`   |
+| Swagger  | `http://localhost:3000/api/docs` |
+| Frontend | `http://localhost:5173`          |
+
+### CORS
+
+CORS is environment-driven. The final allowlist is the union of:
+
+- `FRONTEND_URL` (single primary origin - the React app's base URL)
+- `CORS_ORIGINS` (comma-separated extras for previews / native shells)
+- `http://localhost:5173` and `http://127.0.0.1:5173` (auto-added in non-production)
+
+`credentials: true` is enabled, so the frontend can send cookies / `Authorization`
+headers in cross-origin requests. Blocked origins are logged with a `CORS` tag
+in the server console so you can see exactly what was rejected.
+
+When you move to production, set `FRONTEND_URL=https://app.sidequest.example` and
+leave `CORS_ORIGINS` empty (or add preview URLs).
+
+### Frontend `.env`
+
+In your React app's `.env` use one variable for the base URL so domain switching
+is a single config change:
+
+```env
+VITE_API_BASE_URL=http://localhost:3000/api/v1
+```
+
+Then in code:
+
+```ts
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL,
+  withCredentials: true,
+});
+```
+
+### Verifying the connection
+
+Once the backend is running you can sanity-check connectivity:
+
+```bash
+# 1. Liveness (no DB hit, safe even before migrations)
+curl -i http://localhost:3000/api/v1/health
+# → { "success": true, "message": "SideQuest API running", ... }
+
+# 2. DB readiness
+curl -i http://localhost:3000/api/v1/health/db
+# → { "success": true, "message": "Database reachable", "db": "up", ... }
+
+# 3. CORS preflight from the Vite origin
+curl -i -X OPTIONS http://localhost:3000/api/v1/health \
+  -H "Origin: http://localhost:5173" \
+  -H "Access-Control-Request-Method: GET"
+# → 204 with Access-Control-Allow-Origin: http://localhost:5173
+```
+
+If the frontend gets CORS errors, check the backend log for a
+`[CORS] Blocked CORS origin: ...` warning - it will name the exact origin that
+needs adding to `FRONTEND_URL` or `CORS_ORIGINS`.
+
+Every request is also access-logged with origin + IP + status (the `HTTP` log
+namespace), which makes it trivial to confirm the frontend is actually hitting
+the backend.
 
 ---
 

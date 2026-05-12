@@ -21,11 +21,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit(): Promise<void> {
+    // Escape hatch for tooling that needs to boot AppModule without a live DB
+    // (e.g. the OpenAPI generator invoked by the pre-commit hook). Set
+    // SKIP_PRISMA_CONNECT=1 in that environment.
+    if (process.env.SKIP_PRISMA_CONNECT === '1') {
+      this.logger.warn('Prisma $connect skipped (SKIP_PRISMA_CONNECT=1)');
+      return;
+    }
     await this.$connect();
     this.logger.log('Prisma connected');
   }
 
   async onModuleDestroy(): Promise<void> {
+    if (process.env.SKIP_PRISMA_CONNECT === '1') {
+      return;
+    }
     await this.$disconnect();
     this.logger.log('Prisma disconnected');
   }

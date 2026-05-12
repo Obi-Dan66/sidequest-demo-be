@@ -58,6 +58,10 @@ export class EnvVariables {
 
   @IsOptional()
   @IsString()
+  FRONTEND_URL?: string;
+
+  @IsOptional()
+  @IsString()
   CORS_ORIGINS?: string;
 
   @IsOptional()

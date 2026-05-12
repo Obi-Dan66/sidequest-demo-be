@@ -2,6 +2,7 @@
 set -e
 
 yarn format
+yarn openapi:generate
 git add .
 yarn typecheck
 yarn lint
