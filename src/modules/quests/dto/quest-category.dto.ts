@@ -9,8 +9,9 @@ export class QuestCategoryDto {
   @ApiPropertyOptional() iconUrl?: string | null;
   @ApiPropertyOptional() coverImageUrl?: string | null;
   @ApiPropertyOptional() colorHex?: string | null;
+  @ApiProperty() questCount!: number;
 
-  static fromEntity(c: QuestCategory): QuestCategoryDto {
+  static fromEntity(c: QuestCategory, questCount: number): QuestCategoryDto {
     return {
       id: c.id,
       slug: c.slug,
@@ -19,6 +20,7 @@ export class QuestCategoryDto {
       iconUrl: c.iconUrl,
       coverImageUrl: c.coverImageUrl,
       colorHex: c.colorHex,
+      questCount,
     };
   }
 }

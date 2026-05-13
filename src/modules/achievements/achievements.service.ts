@@ -8,7 +8,12 @@ import {
 import { levelFromXp } from '../../common/gamification/xp';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsBus } from '../events/events.bus';
-import { AppEvents, FriendRequestAcceptedEvent, QuestCompletedEvent } from '../events/events.types';
+import {
+  AppEvents,
+  FriendRequestAcceptedEvent,
+  QuestCompletedEvent,
+  QuestLocationCheckedInEvent,
+} from '../events/events.types';
 import { AchievementDto, UserAchievementDto } from './dto/achievement.dto';
 import { AchievementsRepository } from './achievements.repository';
 
@@ -22,18 +27,6 @@ interface AchievementCriteria {
   categorySlug?: string;
 }
 
-/**
- * Gamification engine.
- *
- * Data-driven: every Achievement row carries a `criteria` JSON blob whose shape
- * is documented in `AchievementCriteria`. On every relevant domain event we
- * re-evaluate all not-yet-unlocked achievements for the affected user.
- *
- * Side effect on unlock:
- *   - insert UserAchievement
- *   - increment user.xp by `Achievement.xpBonus` (and re-derive level)
- *   - emit `AchievementUnlocked` for the notifications fan-out
- */
 @Injectable()
 export class AchievementsService implements OnModuleInit {
   private readonly logger = new Logger(AchievementsService.name);
@@ -50,6 +43,11 @@ export class AchievementsService implements OnModuleInit {
       await this.evaluateForUser(payload.userId);
     });
 
+    this.events.on(AppEvents.QuestLocationCheckedIn, async (payload: unknown) => {
+      if (!this.isQuestLocationCheckedIn(payload)) return;
+      await this.evaluateForUser(payload.userId);
+    });
+
     this.events.on(AppEvents.FriendRequestAccepted, async (payload: unknown) => {
       if (!this.isFriendAccepted(payload)) return;
       await this.evaluateForUser(payload.requesterId);
@@ -63,32 +61,83 @@ export class AchievementsService implements OnModuleInit {
   }
 
   async listForUser(userId: string): Promise<UserAchievementDto[]> {
-    const unlocked = await this.achievements.listForUser(userId);
-    return unlocked.map(UserAchievementDto.fromEntity);
+    const allDefs = await this.achievements.listAll();
+    const userRows = await this.achievements.listForUser(userId);
+
+    const userMap = new Map(userRows.map((ua) => [ua.achievementId, ua]));
+
+    return allDefs.map((def) => {
+      const ua = userMap.get(def.id);
+      const isUnlocked = ua?.unlockedAt != null;
+
+      let progress: UserAchievementDto['progress'] = null;
+      if (!isUnlocked && def.targetValue != null) {
+        progress = { current: ua?.progress ?? 0, target: def.targetValue };
+      }
+
+      return {
+        id: def.id,
+        slug: def.slug,
+        name: def.name,
+        description: def.description,
+        iconUrl: def.iconUrl,
+        type: def.type,
+        xpBonus: def.xpBonus,
+        unlockedAt: ua?.unlockedAt ?? null,
+        progress,
+      };
+    });
   }
 
   async evaluateForUser(userId: string): Promise<void> {
     const definitions = await this.achievements.listAll();
     for (const def of definitions) {
       const existing = await this.achievements.findUserAchievement(userId, def.id);
-      if (existing) continue;
+      if (existing?.unlockedAt) continue;
 
-      const earned = await this.evaluate(def, userId);
-      if (!earned) continue;
+      const result = await this.evaluateWithProgress(def, userId);
 
-      await this.unlock(userId, def);
+      if (existing) {
+        if (result.earned && !existing.unlockedAt) {
+          await this.unlock(userId, def);
+        } else if (result.progress !== existing.progress) {
+          await this.prisma.userAchievement.update({
+            where: { userId_achievementId: { userId, achievementId: def.id } },
+            data: { progress: result.progress },
+          });
+        }
+      } else {
+        if (result.earned) {
+          await this.unlock(userId, def);
+        } else if (result.progress > 0) {
+          await this.prisma.userAchievement.create({
+            data: { userId, achievementId: def.id, progress: result.progress },
+          });
+        }
+      }
     }
   }
 
   private async unlock(userId: string, achievement: Achievement): Promise<void> {
-    await this.prisma.runInTransaction(async (tx) => {
-      const existing = await tx.userAchievement.findUnique({
-        where: { userId_achievementId: { userId, achievementId: achievement.id } },
-      });
-      if (existing) return;
+    const before = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { level: true },
+    });
+    const previousLevel = before?.level ?? 1;
 
-      await tx.userAchievement.create({
-        data: { userId, achievementId: achievement.id },
+    await this.prisma.runInTransaction(async (tx) => {
+      await tx.userAchievement.upsert({
+        where: { userId_achievementId: { userId, achievementId: achievement.id } },
+        create: {
+          userId,
+          achievementId: achievement.id,
+          unlockedAt: new Date(),
+          progress: achievement.targetValue ?? 0,
+        },
+        update: {
+          unlockedAt: new Date(),
+          progress: achievement.targetValue ?? 0,
+        },
       });
 
       if (achievement.xpBonus > 0) {
@@ -109,19 +158,34 @@ export class AchievementsService implements OnModuleInit {
       achievementId: achievement.id,
       achievementSlug: achievement.slug,
     });
+
+    if (achievement.xpBonus > 0) {
+      const after = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { level: true },
+      });
+      const newLevel = after?.level ?? previousLevel;
+      if (newLevel > previousLevel) {
+        this.events.emit(AppEvents.LevelUp, { userId, previousLevel, newLevel });
+      }
+    }
+
     this.logger.log(`User ${userId} unlocked achievement ${achievement.slug}`);
   }
 
-  private async evaluate(achievement: Achievement, userId: string): Promise<boolean> {
+  private async evaluateWithProgress(
+    achievement: Achievement,
+    userId: string,
+  ): Promise<{ earned: boolean; progress: number }> {
     const criteria = this.parseCriteria(achievement.criteria);
 
     switch (achievement.type) {
       case AchievementType.QUEST_COUNT: {
-        if (criteria.minQuests === undefined) return false;
+        if (criteria.minQuests === undefined) return { earned: false, progress: 0 };
         const completed = await this.prisma.questCompletion.count({
           where: { userId, status: QuestCompletionStatus.COMPLETED },
         });
-        return completed >= criteria.minQuests;
+        return { earned: completed >= criteria.minQuests, progress: completed };
       }
 
       case AchievementType.XP_THRESHOLD: {
@@ -129,16 +193,17 @@ export class AchievementsService implements OnModuleInit {
           where: { id: userId },
           select: { xp: true },
         });
-        if (!user) return false;
-        if (criteria.minXp !== undefined && user.xp < criteria.minXp) return false;
-        if (criteria.minLevel !== undefined && levelFromXp(user.xp) < criteria.minLevel) {
-          return false;
-        }
-        return criteria.minXp !== undefined || criteria.minLevel !== undefined;
+        if (!user) return { earned: false, progress: 0 };
+        const current = criteria.minXp !== undefined ? user.xp : levelFromXp(user.xp);
+        const earned =
+          (criteria.minXp !== undefined && user.xp >= criteria.minXp) ||
+          (criteria.minLevel !== undefined && levelFromXp(user.xp) >= criteria.minLevel);
+        return { earned, progress: current };
       }
 
       case AchievementType.CATEGORY_EXPLORER: {
-        if (!criteria.categorySlug || criteria.minQuests === undefined) return false;
+        if (!criteria.categorySlug || criteria.minQuests === undefined)
+          return { earned: false, progress: 0 };
         const completed = await this.prisma.questCompletion.count({
           where: {
             userId,
@@ -146,11 +211,11 @@ export class AchievementsService implements OnModuleInit {
             quest: { category: { slug: criteria.categorySlug } },
           },
         });
-        return completed >= criteria.minQuests;
+        return { earned: completed >= criteria.minQuests, progress: completed };
       }
 
       case AchievementType.LOCATION_VISITS: {
-        if (criteria.minLocations === undefined) return false;
+        if (criteria.minLocations === undefined) return { earned: false, progress: 0 };
         const rows = await this.prisma.questCompletion.findMany({
           where: { userId, status: QuestCompletionStatus.COMPLETED },
           select: { quest: { select: { locations: { select: { id: true } } } } },
@@ -159,33 +224,36 @@ export class AchievementsService implements OnModuleInit {
         for (const row of rows) {
           for (const loc of row.quest.locations) distinct.add(loc.id);
         }
-        return distinct.size >= criteria.minLocations;
+        return { earned: distinct.size >= criteria.minLocations, progress: distinct.size };
       }
 
       case AchievementType.SOCIAL: {
-        if (criteria.minFriends === undefined) return false;
+        if (criteria.minFriends === undefined) return { earned: false, progress: 0 };
         const friends = await this.prisma.friendship.count({
           where: {
             status: FriendshipStatus.ACCEPTED,
             OR: [{ requesterId: userId }, { addresseeId: userId }],
           },
         });
-        return friends >= criteria.minFriends;
+        return { earned: friends >= criteria.minFriends, progress: friends };
       }
 
       case AchievementType.STREAK: {
-        if (criteria.minStreakDays === undefined) return false;
+        if (criteria.minStreakDays === undefined) return { earned: false, progress: 0 };
         const user = await this.prisma.user.findUnique({
           where: { id: userId },
           select: { streakDays: true },
         });
-        if (!user) return false;
-        return user.streakDays >= criteria.minStreakDays;
+        if (!user) return { earned: false, progress: 0 };
+        return {
+          earned: user.streakDays >= criteria.minStreakDays,
+          progress: user.streakDays,
+        };
       }
 
       case AchievementType.CUSTOM:
       default:
-        return false;
+        return { earned: false, progress: 0 };
     }
   }
 
@@ -213,7 +281,20 @@ export class AchievementsService implements OnModuleInit {
 
   private isQuestCompleted(value: unknown): value is QuestCompletedEvent {
     if (typeof value !== 'object' || value === null) return false;
-    return typeof Reflect.get(value, 'userId') === 'string';
+    if (typeof Reflect.get(value, 'userId') !== 'string') return false;
+    if (typeof Reflect.get(value, 'questId') !== 'string') return false;
+    if (typeof Reflect.get(value, 'xpAwarded') !== 'number') return false;
+    const at = Reflect.get(value, 'completedAt');
+    return at instanceof Date;
+  }
+
+  private isQuestLocationCheckedIn(value: unknown): value is QuestLocationCheckedInEvent {
+    if (typeof value !== 'object' || value === null) return false;
+    return (
+      typeof Reflect.get(value, 'userId') === 'string' &&
+      typeof Reflect.get(value, 'questId') === 'string' &&
+      typeof Reflect.get(value, 'locationId') === 'string'
+    );
   }
 
   private isFriendAccepted(value: unknown): value is FriendRequestAcceptedEvent {

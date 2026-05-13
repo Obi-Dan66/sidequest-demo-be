@@ -113,7 +113,7 @@ Optional siblings: `*.gateway.ts` (WebSocket), `*.consumer.ts` (BullMQ - future)
 ### Migration etiquette
 
 ```bash
-npm run prisma:migrate -- --name <descriptive-snake-case>
+yarn prisma:migrate -- --name <descriptive-snake-case>
 ```
 
 - Migrations live in `prisma/migrations/`.

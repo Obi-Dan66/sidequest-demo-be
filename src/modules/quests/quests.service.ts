@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, QuestStatus } from '@prisma/client';
+import { Prisma, QuestCompletionStatus, QuestLocation, QuestStatus } from '@prisma/client';
 import { AppRole } from '../../common/auth/roles.enum';
 import { levelFromXp } from '../../common/gamification/xp';
 import { PaginatedResult, paginate } from '../../common/responses/api-response';
@@ -15,10 +15,13 @@ import { AppEvents } from '../events/events.types';
 import { GeoService } from '../geo/geo.service';
 import { CreateQuestDto } from './dto/create-quest.dto';
 import { ListQuestsDto, ListQuestsNearbyDto } from './dto/list-quests.dto';
+import { QuestCheckInBodyDto } from './dto/quest-check-in.dto';
 import { QuestDto, QuestLocationDto } from './dto/quest.dto';
+import { QuestCategoryDto } from './dto/quest-category.dto';
+import { RateQuestDto } from './dto/rate-quest.dto';
 import { UpdateQuestDto } from './dto/update-quest.dto';
 import { QuestCompletionsRepository } from './quest-completions.repository';
-import { QuestWithLocations, QuestsRepository } from './quests.repository';
+import { QuestWithEnrichment, QuestsRepository } from './quests.repository';
 
 const STREAK_WINDOW_HOURS = 36;
 const STREAK_RESET_HOURS = 48;
@@ -75,7 +78,7 @@ export class QuestsService {
       limit: 200,
     });
 
-    const refined: Array<{ quest: QuestWithLocations; distance: number }> = [];
+    const refined: Array<{ quest: QuestWithEnrichment; distance: number }> = [];
     for (const quest of candidates) {
       let nearest = Infinity;
       for (const loc of quest.locations) {
@@ -99,16 +102,20 @@ export class QuestsService {
     });
   }
 
-  async getById(id: string): Promise<QuestDto> {
+  async getById(id: string, viewerUserId?: string): Promise<QuestDto> {
     const quest = await this.quests.findById(id);
     if (!quest) throw new NotFoundException('Quest not found');
-    return this.toDto(quest);
+    const checked = viewerUserId ? await this.loadCheckedLocationIds(viewerUserId, id) : undefined;
+    return this.toDto(quest, undefined, checked);
   }
 
-  async getBySlug(slug: string): Promise<QuestDto> {
+  async getBySlug(slug: string, viewerUserId?: string): Promise<QuestDto> {
     const quest = await this.quests.findBySlug(slug);
     if (!quest) throw new NotFoundException('Quest not found');
-    return this.toDto(quest);
+    const checked = viewerUserId
+      ? await this.loadCheckedLocationIds(viewerUserId, quest.id)
+      : undefined;
+    return this.toDto(quest, undefined, checked);
   }
 
   async create(authorId: string, dto: CreateQuestDto): Promise<QuestDto> {
@@ -204,48 +211,9 @@ export class QuestsService {
       throw new BadRequestException('Quest must be started before it can be completed');
     }
 
-    const result = await this.prisma.runInTransaction(async (tx) => {
-      const user = await tx.user.findUnique({
-        where: { id: userId },
-        select: { xp: true, streakDays: true, lastQuestCompletedAt: true },
-      });
-      if (!user) throw new NotFoundException('User not found');
-
-      const now = new Date();
-      const newStreak = this.computeStreak(user.streakDays, user.lastQuestCompletedAt, now);
-      const previousLevel = levelFromXp(user.xp);
-      const newXp = user.xp + quest.xpReward;
-      const newLevel = levelFromXp(newXp);
-
-      await tx.questCompletion.update({
-        where: { userId_questId: { userId, questId } },
-        data: {
-          status: 'COMPLETED',
-          completedAt: now,
-          xpAwarded: quest.xpReward,
-          proof,
-        },
-      });
-
-      await tx.user.update({
-        where: { id: userId },
-        data: {
-          xp: { increment: quest.xpReward },
-          questsDone: { increment: 1 },
-          level: newLevel,
-          streakDays: newStreak,
-          lastQuestCompletedAt: now,
-        },
-      });
-
-      return {
-        xpAwarded: quest.xpReward,
-        previousLevel,
-        newLevel,
-        streakDays: newStreak,
-        completedAt: now,
-      };
-    });
+    const result = await this.prisma.runInTransaction(async (tx) =>
+      this.finalizeQuestCompletionTx(tx, { userId, questId, quest, proof }),
+    );
 
     this.events.emit(AppEvents.QuestCompleted, {
       userId,
@@ -253,6 +221,14 @@ export class QuestsService {
       xpAwarded: result.xpAwarded,
       completedAt: result.completedAt,
     });
+
+    if (result.newLevel > result.previousLevel) {
+      this.events.emit(AppEvents.LevelUp, {
+        userId,
+        previousLevel: result.previousLevel,
+        newLevel: result.newLevel,
+      });
+    }
 
     return {
       xpAwarded: result.xpAwarded,
@@ -262,10 +238,315 @@ export class QuestsService {
     };
   }
 
+  async checkInLocation(
+    userId: string,
+    questId: string,
+    locationId: string,
+    body: QuestCheckInBodyDto,
+  ): Promise<{ httpStatus: number; stepCompleted: boolean; questCompleted: boolean }> {
+    const quest = await this.quests.findById(questId);
+    if (!quest) throw new NotFoundException('Quest not found');
+    if (quest.status !== QuestStatus.PUBLISHED) {
+      throw new BadRequestException('Quest is not available');
+    }
+
+    const location = await this.prisma.questLocation.findFirst({
+      where: { id: locationId, questId },
+    });
+    if (!location) throw new NotFoundException('Location not found for this quest');
+
+    const distanceM = this.geo.haversineMeters(
+      { latitude: body.latitude, longitude: body.longitude },
+      { latitude: location.latitude, longitude: location.longitude },
+    );
+    if (distanceM > location.radiusM) {
+      throw new ConflictException({
+        message: 'You are outside the allowed radius for this waypoint',
+        code: 'OUT_OF_RANGE',
+        details: { distanceM: Math.round(distanceM) },
+      });
+    }
+
+    const existingCheckIn = await this.prisma.questLocationCheckIn.findUnique({
+      where: { userId_locationId: { userId, locationId } },
+    });
+    if (existingCheckIn) {
+      const row = await this.prisma.questCompletion.findUnique({
+        where: { userId_questId: { userId, questId } },
+        select: { status: true },
+      });
+      return {
+        httpStatus: 200,
+        stepCompleted: true,
+        questCompleted: row?.status === QuestCompletionStatus.COMPLETED,
+      };
+    }
+
+    const active = await this.completions.findActive(userId, questId);
+    if (!active || active.status !== QuestCompletionStatus.STARTED) {
+      throw new BadRequestException('Start the quest before checking in at waypoints');
+    }
+
+    const totalStops = quest.locations.length;
+    if (totalStops === 0) {
+      throw new BadRequestException('This quest has no waypoints');
+    }
+
+    const outcome = await this.prisma.runInTransaction(async (tx) => {
+      const dup = await tx.questLocationCheckIn.findUnique({
+        where: { userId_locationId: { userId, locationId } },
+      });
+      if (dup) {
+        const c = await tx.questCompletion.findUnique({
+          where: { userId_questId: { userId, questId } },
+          select: { status: true },
+        });
+        return {
+          httpStatus: 200,
+          stepCompleted: true,
+          questCompleted: c?.status === QuestCompletionStatus.COMPLETED,
+          emitComplete: false,
+          completedAt: undefined,
+          xpAwarded: 0,
+          previousLevel: 0,
+          newLevel: 0,
+        };
+      }
+
+      await tx.questLocationCheckIn.create({
+        data: {
+          userId,
+          questId,
+          locationId,
+          latitude: body.latitude,
+          longitude: body.longitude,
+          accuracyM: body.accuracyM,
+        },
+      });
+
+      await tx.questCompletion.update({
+        where: { userId_questId: { userId, questId } },
+        data: { checkedInLocationIds: { push: locationId } },
+      });
+
+      await tx.user.update({
+        where: { id: userId },
+        data: { placesVisited: { increment: 1 } },
+      });
+
+      const checkedCount = await tx.questLocationCheckIn.count({
+        where: { userId, questId },
+      });
+
+      let questCompleted = false;
+      let emitComplete = false;
+      let completedAt: Date | undefined;
+      let xpAwarded = 0;
+      let previousLevel = 0;
+      let newLevel = 0;
+
+      if (checkedCount >= totalStops) {
+        const fin = await this.finalizeQuestCompletionTx(tx, {
+          userId,
+          questId,
+          quest,
+          proof: { checkIns: true },
+        });
+        questCompleted = true;
+        emitComplete = true;
+        completedAt = fin.completedAt;
+        xpAwarded = fin.xpAwarded;
+        previousLevel = fin.previousLevel;
+        newLevel = fin.newLevel;
+      }
+
+      return {
+        httpStatus: 201,
+        stepCompleted: true,
+        questCompleted,
+        emitComplete,
+        completedAt,
+        xpAwarded,
+        previousLevel,
+        newLevel,
+      };
+    });
+
+    if (outcome.emitComplete && outcome.completedAt) {
+      this.events.emit(AppEvents.QuestCompleted, {
+        userId,
+        questId,
+        xpAwarded: outcome.xpAwarded,
+        completedAt: outcome.completedAt,
+      });
+      if (outcome.newLevel > outcome.previousLevel) {
+        this.events.emit(AppEvents.LevelUp, {
+          userId,
+          previousLevel: outcome.previousLevel,
+          newLevel: outcome.newLevel,
+        });
+      }
+    }
+
+    if (outcome.httpStatus === 201) {
+      this.events.emit(AppEvents.QuestLocationCheckedIn, { userId, questId, locationId });
+    }
+
+    return {
+      httpStatus: outcome.httpStatus,
+      stepCompleted: outcome.stepCompleted,
+      questCompleted: outcome.questCompleted,
+    };
+  }
+
+  async rate(userId: string, questId: string, dto: RateQuestDto): Promise<void> {
+    const quest = await this.quests.findById(questId);
+    if (!quest) throw new NotFoundException('Quest not found');
+
+    await this.prisma.runInTransaction(async (tx) => {
+      await tx.questRating.upsert({
+        where: { userId_questId: { userId, questId } },
+        create: { userId, questId, score: dto.score, comment: dto.comment },
+        update: { score: dto.score, comment: dto.comment },
+      });
+
+      const agg = await tx.questRating.aggregate({
+        where: { questId },
+        _avg: { score: true },
+        _count: { score: true },
+      });
+
+      await tx.quest.update({
+        where: { id: questId },
+        data: { ratingAvg: agg._avg.score, ratingCount: agg._count.score },
+      });
+    });
+  }
+
+  async unrate(userId: string, questId: string): Promise<void> {
+    const quest = await this.quests.findById(questId);
+    if (!quest) throw new NotFoundException('Quest not found');
+
+    await this.prisma.runInTransaction(async (tx) => {
+      await tx.questRating.deleteMany({ where: { userId, questId } });
+
+      const agg = await tx.questRating.aggregate({
+        where: { questId },
+        _avg: { score: true },
+        _count: { score: true },
+      });
+
+      await tx.quest.update({
+        where: { id: questId },
+        data: {
+          ratingAvg: agg._count.score > 0 ? agg._avg.score : null,
+          ratingCount: agg._count.score,
+        },
+      });
+    });
+  }
+
+  private async loadCheckedLocationIds(userId: string, questId: string): Promise<Set<string>> {
+    const rows = await this.prisma.questLocationCheckIn.findMany({
+      where: { userId, questId },
+      select: { locationId: true },
+    });
+    return new Set(rows.map((r) => r.locationId));
+  }
+
+  private sumPathDistanceMeters(locations: QuestLocation[]): number {
+    const sorted = [...locations].sort((a, b) => a.orderIndex - b.orderIndex);
+    let sum = 0;
+    for (let i = 0; i < sorted.length - 1; i++) {
+      sum += this.geo.haversineMeters(
+        { latitude: sorted[i].latitude, longitude: sorted[i].longitude },
+        { latitude: sorted[i + 1].latitude, longitude: sorted[i + 1].longitude },
+      );
+    }
+    return sum;
+  }
+
+  private async finalizeQuestCompletionTx(
+    tx: Prisma.TransactionClient,
+    params: {
+      userId: string;
+      questId: string;
+      quest: QuestWithEnrichment;
+      proof?: Prisma.InputJsonValue;
+    },
+  ): Promise<{
+    xpAwarded: number;
+    previousLevel: number;
+    newLevel: number;
+    streakDays: number;
+    completedAt: Date;
+  }> {
+    const { userId, questId, quest, proof } = params;
+
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { xp: true, streakDays: true, longestStreakDays: true, lastQuestCompletedAt: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const now = new Date();
+    const newStreak = this.computeStreak(user.streakDays, user.lastQuestCompletedAt, now);
+    const longestStreakDays = Math.max(user.longestStreakDays, newStreak);
+    const previousLevel = levelFromXp(user.xp);
+    const newLevel = levelFromXp(user.xp + quest.xpReward);
+
+    const completion = await tx.questCompletion.findUnique({
+      where: { userId_questId: { userId, questId } },
+      select: { startedAt: true, status: true },
+    });
+    if (!completion || completion.status === QuestCompletionStatus.COMPLETED) {
+      throw new BadRequestException('Quest must be started before it can be completed');
+    }
+
+    const durationMin = Math.round((now.getTime() - completion.startedAt.getTime()) / 60000);
+    const pathMeters = Math.round(this.sumPathDistanceMeters(quest.locations));
+
+    const completionData: Prisma.QuestCompletionUpdateInput = {
+      status: QuestCompletionStatus.COMPLETED,
+      completedAt: now,
+      xpAwarded: quest.xpReward,
+      durationMin,
+    };
+    if (proof !== undefined) {
+      completionData.proof = proof;
+    }
+
+    await tx.questCompletion.update({
+      where: { userId_questId: { userId, questId } },
+      data: completionData,
+    });
+
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        xp: { increment: quest.xpReward },
+        questsDone: { increment: 1 },
+        level: newLevel,
+        streakDays: newStreak,
+        longestStreakDays,
+        lastQuestCompletedAt: now,
+        distanceWalkedM: { increment: pathMeters },
+      },
+    });
+
+    return {
+      xpAwarded: quest.xpReward,
+      previousLevel,
+      newLevel,
+      streakDays: newStreak,
+      completedAt: now,
+    };
+  }
+
   private computeStreak(currentStreak: number, lastAt: Date | null, now: Date): number {
     if (!lastAt) return Math.max(1, currentStreak === 0 ? 1 : currentStreak);
     const hours = (now.getTime() - lastAt.getTime()) / (1000 * 60 * 60);
-    if (hours <= STREAK_WINDOW_HOURS) return currentStreak; // same window, no double-count
+    if (hours <= STREAK_WINDOW_HOURS) return currentStreak;
     if (hours <= STREAK_RESET_HOURS) return currentStreak + 1;
     return 1;
   }
@@ -277,8 +558,9 @@ export class QuestsService {
   }
 
   private toDto(
-    quest: QuestWithLocations,
+    quest: QuestWithEnrichment,
     distanceFrom?: { latitude: number; longitude: number },
+    checkedLocationIds?: Set<string>,
   ): QuestDto {
     const locations: QuestLocationDto[] = quest.locations.map((loc) => {
       const dto: QuestLocationDto = {
@@ -298,8 +580,55 @@ export class QuestsService {
           }),
         );
       }
+      if (checkedLocationIds) {
+        dto.isCompleted = checkedLocationIds.has(loc.id);
+      }
       return dto;
     });
-    return QuestDto.fromEntity(quest, locations);
+
+    return {
+      id: quest.id,
+      slug: quest.slug,
+      title: quest.title,
+      summary: quest.summary,
+      description: quest.description,
+      difficulty: quest.difficulty,
+      status: quest.status,
+      xpReward: quest.xpReward,
+      estimatedDurationMin: quest.estimatedDurationMin,
+      imageUrl: quest.imageUrl,
+      coverImageUrl: quest.coverImageUrl,
+      categoryId: quest.categoryId,
+      businessId: quest.businessId,
+      authorId: quest.authorId,
+      publishedAt: quest.publishedAt,
+      createdAt: quest.createdAt,
+      updatedAt: quest.updatedAt,
+      locations,
+      tags: quest.tags,
+      rating: quest.ratingAvg ?? null,
+      ratingCount: quest.ratingCount,
+      participantCount: quest._count.completions,
+      participants: quest.completions.map((c) => ({
+        id: c.user.id,
+        username: c.user.username,
+        displayName: c.user.displayName,
+        avatarUrl: c.user.avatarUrl,
+        level: c.user.level,
+      })),
+      category: quest.category
+        ? QuestCategoryDto.fromEntity(quest.category, quest.category._count.quests)
+        : null,
+      rewards: {
+        xp: quest.xpReward,
+        achievements: quest.rewardAchievements.map((ra) => ({
+          id: ra.achievement.id,
+          slug: ra.achievement.slug,
+          name: ra.achievement.name,
+          iconUrl: ra.achievement.iconUrl,
+          xpBonus: ra.achievement.xpBonus,
+        })),
+      },
+    };
   }
 }

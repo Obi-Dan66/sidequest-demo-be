@@ -100,11 +100,19 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       const codeValue = raw.code;
       const code = typeof codeValue === 'string' ? codeValue : this.codeForStatus(status);
 
+      const rawDetails = Reflect.get(raw, 'details');
+      const details =
+        rawDetails !== undefined
+          ? rawDetails
+          : Array.isArray(messageValue)
+            ? messageValue
+            : undefined;
+
       return {
         status,
         code,
         message,
-        details: Array.isArray(messageValue) ? messageValue : undefined,
+        details,
       };
     }
 

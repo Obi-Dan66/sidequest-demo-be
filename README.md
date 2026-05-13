@@ -2,12 +2,15 @@
 
 > Gamified exploration platform. Discover real-world places, complete quests, gain XP, unlock achievements, and socialize. Initial scope: Prague. Designed for global expansion.
 
+**Tooling:** this repo uses **Yarn Classic** only (`yarn.lock`). Run `yarn install` after clone; do not use `npm install` (avoids a stray `package-lock.json`). Husky pre-commit runs `yarn format`, `yarn openapi:generate`, `yarn typecheck`, and `yarn lint`.
+
 ---
 
 ## Stack
 
 | Layer            | Tech                                                          |
 |------------------|---------------------------------------------------------------|
+| Package manager | [Yarn Classic 1.x](https://classic.yarnpkg.com) (`yarn.lock`) |
 | Framework        | [NestJS 10](https://nestjs.com) + TypeScript (strict mode)    |
 | ORM              | [Prisma 5](https://www.prisma.io)                             |
 | Database         | PostgreSQL 16                                                 |
@@ -49,7 +52,11 @@ src/
     uploads/                    # local storage driver (S3-ready abstraction)
     geo/                        # Haversine + bounding-box utilities
     events/                     # in-process pub/sub (BullMQ swap-in target)
+    schedules/                  # @nestjs/schedule crons (e.g. UTC streak rollover)
     health/                     # /health probe
+    invites/                    # referral invites + preview token
+    leaderboard/                # global / city leaderboards
+    stats/                      # public platform stats (cached)
 prisma/
   schema.prisma                 # data model
   seed.ts                       # idempotent dev seed

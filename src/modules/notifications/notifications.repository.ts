@@ -40,4 +40,10 @@ export class NotificationsRepository {
       data: { readAt: new Date() },
     });
   }
+
+  countUnread(userId: string): Promise<number> {
+    return this.prisma.notification.count({
+      where: { userId, readAt: null },
+    });
+  }
 }

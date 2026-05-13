@@ -4,10 +4,13 @@ import { FriendshipStatus } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/auth/auth-user.interface';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { IdParamDto } from '../../common/dto/id-param.dto';
-import { ActivityItemDto } from './dto/activity-item.dto';
+import { ApiSuccessResponse } from '../../common/responses/api-response';
+import { FriendActivityDto } from './dto/friend-activity.dto';
+import { FriendshipActivityQueryDto } from './dto/friendship-activity-query.dto';
 import { CreateFriendshipDto } from './dto/create-friendship.dto';
-import { FriendDto } from './dto/friend.dto';
+import { FriendSummaryDto } from './dto/friend-summary.dto';
 import { FriendshipDto } from './dto/friendship.dto';
+import { PendingFriendshipDto } from './dto/pending-friendship.dto';
 import { FriendshipsService } from './friendships.service';
 
 @ApiTags('friendships')
@@ -27,34 +30,36 @@ export class FriendshipsController {
   }
 
   @Get('friends')
-  @ApiOperation({ summary: 'List accepted friends as resolved users' })
-  async listFriends(@CurrentUser() user: AuthenticatedUser): Promise<FriendDto[]> {
+  @ApiOperation({ summary: 'List accepted friends with presence and mutual quest count' })
+  async listFriends(@CurrentUser() user: AuthenticatedUser): Promise<FriendSummaryDto[]> {
     return this.friendshipsService.listFriends(user.id);
   }
 
   @Get('pending')
-  @ApiOperation({ summary: 'List pending incoming friend requests' })
-  async listPending(@CurrentUser() user: AuthenticatedUser): Promise<FriendDto[]> {
+  @ApiOperation({ summary: 'List pending incoming friend requests with requester details' })
+  async listPending(@CurrentUser() user: AuthenticatedUser): Promise<PendingFriendshipDto[]> {
     return this.friendshipsService.listPendingIncoming(user.id);
   }
 
   @Get('activity')
-  @ApiOperation({ summary: 'Recent activity from my friends (quest completions + achievements)' })
-  @ApiQuery({
-    name: 'limit',
-    required: false,
-    schema: { type: 'integer', minimum: 1, maximum: 100 },
+  @ApiOperation({
+    summary:
+      'Friend activity feed (quest completions, starts, achievements, level-ups, place visits); pass meta.nextCursor as cursor for the next page',
   })
   async activity(
     @CurrentUser() user: AuthenticatedUser,
-    @Query('limit') limit?: string,
-  ): Promise<ActivityItemDto[]> {
-    let resolved = 30;
-    if (limit) {
-      const parsed = Number.parseInt(limit, 10);
-      if (Number.isFinite(parsed) && parsed > 0) resolved = parsed;
-    }
-    return this.friendshipsService.activityFeed(user.id, resolved);
+    @Query() query: FriendshipActivityQueryDto,
+  ): Promise<ApiSuccessResponse<FriendActivityDto[]>> {
+    const limit = query.limit ?? 20;
+    const { items, nextCursor } = await this.friendshipsService.activityFeed(user.id, {
+      limit,
+      cursor: query.cursor,
+    });
+    return {
+      success: true,
+      data: items,
+      ...(nextCursor !== undefined ? { meta: { nextCursor } } : {}),
+    };
   }
 
   @Post()

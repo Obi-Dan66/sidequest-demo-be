@@ -40,3 +40,6 @@ prisma/*.db-journal
 # Uploads (local dev only)
 /uploads/*
 !/uploads/.gitkeep
+
+# dev files
+FEATURES.md

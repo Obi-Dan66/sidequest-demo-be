@@ -13,6 +13,9 @@ export class BusinessDto {
   @ApiPropertyOptional() latitude?: number | null;
   @ApiPropertyOptional() longitude?: number | null;
   @ApiPropertyOptional() ownerId?: string | null;
+  @ApiPropertyOptional({ description: 'Set when the owner starts the partner onboarding flow' })
+  onboardingStartedAt?: Date | null;
+
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 
@@ -29,6 +32,7 @@ export class BusinessDto {
       latitude: b.latitude,
       longitude: b.longitude,
       ownerId: b.ownerId,
+      onboardingStartedAt: b.onboardingStartedAt,
       createdAt: b.createdAt,
       updatedAt: b.updatedAt,
     };

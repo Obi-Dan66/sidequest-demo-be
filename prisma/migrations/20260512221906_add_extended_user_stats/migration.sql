@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "distanceWalkedM" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "longestStreakDays" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "placesVisited" INTEGER NOT NULL DEFAULT 0;

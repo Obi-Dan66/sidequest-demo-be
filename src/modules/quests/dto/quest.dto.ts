@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Quest, QuestDifficulty, QuestStatus } from '@prisma/client';
+import { QuestDifficulty, QuestStatus } from '@prisma/client';
+import { ParticipantSummaryDto } from '../../../common/dto/participant-summary.dto';
+import { QuestCategoryDto } from './quest-category.dto';
 
 export class QuestLocationDto {
   @ApiProperty() id!: string;
@@ -11,6 +13,22 @@ export class QuestLocationDto {
   @ApiProperty() orderIndex!: number;
   @ApiPropertyOptional({ description: 'Distance in meters from the requested point' })
   distanceM?: number;
+  @ApiPropertyOptional({ description: 'Set when the request carries a valid access token' })
+  isCompleted?: boolean;
+}
+
+export class AchievementSummaryDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() slug!: string;
+  @ApiProperty() name!: string;
+  @ApiPropertyOptional() iconUrl!: string | null;
+  @ApiProperty() xpBonus!: number;
+}
+
+export class QuestRewardsDto {
+  @ApiProperty() xp!: number;
+  @ApiProperty({ type: () => [AchievementSummaryDto] })
+  achievements!: AchievementSummaryDto[];
 }
 
 export class QuestDto {
@@ -38,26 +56,14 @@ export class QuestDto {
   })
   distanceM?: number;
 
-  static fromEntity(quest: Quest, locations?: QuestLocationDto[]): QuestDto {
-    return {
-      id: quest.id,
-      slug: quest.slug,
-      title: quest.title,
-      summary: quest.summary,
-      description: quest.description,
-      difficulty: quest.difficulty,
-      status: quest.status,
-      xpReward: quest.xpReward,
-      estimatedDurationMin: quest.estimatedDurationMin,
-      imageUrl: quest.imageUrl,
-      coverImageUrl: quest.coverImageUrl,
-      categoryId: quest.categoryId,
-      businessId: quest.businessId,
-      authorId: quest.authorId,
-      publishedAt: quest.publishedAt,
-      createdAt: quest.createdAt,
-      updatedAt: quest.updatedAt,
-      locations,
-    };
-  }
+  @ApiProperty({ type: () => [String] }) tags!: string[];
+  @ApiPropertyOptional() rating!: number | null;
+  @ApiProperty() ratingCount!: number;
+  @ApiProperty() participantCount!: number;
+  @ApiPropertyOptional({ type: () => [ParticipantSummaryDto] })
+  participants!: ParticipantSummaryDto[];
+  @ApiPropertyOptional({ type: () => QuestCategoryDto })
+  category!: QuestCategoryDto | null;
+  @ApiProperty({ type: () => QuestRewardsDto })
+  rewards!: QuestRewardsDto;
 }

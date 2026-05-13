@@ -16,9 +16,10 @@ import { AuthenticatedUser } from '../../common/auth/auth-user.interface';
 import { ApiPaginatedResponse } from '../../common/decorators/api-paginated-response.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { IdParamDto } from '../../common/dto/id-param.dto';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { UploadResponseDto } from '../uploads/dto/upload-response.dto';
 import { UploadsService } from '../uploads/uploads.service';
+import { QuestHistoryItemDto, QuestHistoryQueryDto } from './dto/quest-history.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserStatsDto } from './dto/user-stats.dto';
 import { UserDto } from './dto/user.dto';
@@ -71,6 +72,16 @@ export class UsersController {
     return this.usersService.getStats(user.id);
   }
 
+  @Get('me/quests/history')
+  @ApiOperation({ summary: 'List quest history for the current user' })
+  @ApiPaginatedResponse(QuestHistoryItemDto)
+  async getMyQuestHistory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: QuestHistoryQueryDto,
+  ) {
+    return this.usersService.getQuestHistory(user.id, query.page, query.limit, query.status);
+  }
+
   @Post('me/avatar')
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
@@ -106,8 +117,8 @@ export class UsersController {
   @Get()
   @ApiOperation({ summary: 'List users (paginated)' })
   @ApiPaginatedResponse(UserDto)
-  async list(@Query() query: PaginationQueryDto) {
-    return this.usersService.list(query.page, query.limit, query.search);
+  async list(@Query() query: ListUsersQueryDto) {
+    return this.usersService.list(query);
   }
 
   @Get(':id')
@@ -120,5 +131,12 @@ export class UsersController {
   @ApiOperation({ summary: 'Get public gamification stats for a user' })
   async getStats(@Param() params: IdParamDto): Promise<UserStatsDto> {
     return this.usersService.getStats(params.id);
+  }
+
+  @Get(':id/quests/history')
+  @ApiOperation({ summary: 'List quest history for a user (public stats)' })
+  @ApiPaginatedResponse(QuestHistoryItemDto)
+  async getUserQuestHistory(@Param() params: IdParamDto, @Query() query: QuestHistoryQueryDto) {
+    return this.usersService.getQuestHistory(params.id, query.page, query.limit, query.status);
   }
 }

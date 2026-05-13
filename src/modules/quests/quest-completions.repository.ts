@@ -49,4 +49,43 @@ export class QuestCompletionsRepository {
       where: { userId, status: QuestCompletionStatus.COMPLETED },
     });
   }
+
+  async listForUser(params: {
+    userId: string;
+    status?: QuestCompletionStatus;
+    skip: number;
+    take: number;
+  }): Promise<{
+    items: Array<
+      QuestCompletion & {
+        quest: { id: string; slug: string; title: string; coverImageUrl: string | null };
+      }
+    >;
+    total: number;
+  }> {
+    const where: Prisma.QuestCompletionWhereInput = {
+      userId: params.userId,
+      status: params.status,
+    };
+
+    const orderBy: Prisma.QuestCompletionOrderByWithRelationInput =
+      params.status === QuestCompletionStatus.COMPLETED
+        ? { completedAt: 'desc' }
+        : { startedAt: 'desc' };
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.questCompletion.findMany({
+        where,
+        orderBy,
+        skip: params.skip,
+        take: params.take,
+        include: {
+          quest: { select: { id: true, slug: true, title: true, coverImageUrl: true } },
+        },
+      }),
+      this.prisma.questCompletion.count({ where }),
+    ]);
+
+    return { items, total };
+  }
 }

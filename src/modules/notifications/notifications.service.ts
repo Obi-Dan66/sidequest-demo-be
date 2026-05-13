@@ -1,17 +1,21 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { ParticipantSummaryDto } from '../../common/dto/participant-summary.dto';
 import { PaginatedResult, paginate } from '../../common/responses/api-response';
+import { PrismaService } from '../../prisma/prisma.service';
 import { EventsBus } from '../events/events.bus';
 import {
   AchievementUnlockedEvent,
   AppEvents,
+  BusinessQuestApprovedEvent,
   FriendRequestAcceptedEvent,
   FriendRequestSentEvent,
+  LevelUpEvent,
   QuestCompletedEvent,
 } from '../events/events.types';
+import { NotificationDto, NotificationType } from './dto/notification.dto';
 import { NotificationsGateway } from './notifications.gateway';
 import { NotificationsRepository } from './notifications.repository';
-import { NotificationDto } from './dto/notification.dto';
 
 /**
  * Notification delivery orchestrator.
@@ -36,6 +40,7 @@ export class NotificationsService implements OnModuleInit {
     private readonly repo: NotificationsRepository,
     private readonly gateway: NotificationsGateway,
     private readonly events: EventsBus,
+    private readonly prisma: PrismaService,
   ) {}
 
   onModuleInit(): void {
@@ -45,14 +50,18 @@ export class NotificationsService implements OnModuleInit {
     this.events.on(AppEvents.FriendRequestAccepted, (payload) =>
       this.onFriendRequestAccepted(payload),
     );
+    this.events.on(AppEvents.LevelUp, (payload) => this.onLevelUp(payload));
+    this.events.on(AppEvents.BusinessQuestApproved, (payload) =>
+      this.onBusinessQuestApproved(payload),
+    );
   }
 
   async send(input: {
     userId: string;
-    type: string;
+    type: NotificationType;
     title: string;
     body?: string;
-    data?: Prisma.InputJsonValue;
+    data?: Prisma.JsonObject;
   }): Promise<NotificationDto> {
     const created = await this.repo.create({
       user: { connect: { id: input.userId } },
@@ -76,6 +85,10 @@ export class NotificationsService implements OnModuleInit {
     return paginate(items.map(NotificationDto.fromEntity), page, limit, total);
   }
 
+  async countUnread(userId: string): Promise<number> {
+    return this.repo.countUnread(userId);
+  }
+
   async markRead(id: string, userId: string): Promise<void> {
     await this.repo.markRead(id, userId);
   }
@@ -88,44 +101,115 @@ export class NotificationsService implements OnModuleInit {
 
   private async onQuestCompleted(payload: unknown): Promise<void> {
     if (!this.isQuestCompleted(payload)) return;
+    const data: Prisma.JsonObject = {
+      questId: payload.questId,
+      xpAwarded: payload.xpAwarded,
+    };
     await this.send({
       userId: payload.userId,
-      type: 'quest.completed',
+      type: NotificationType.QUEST_COMPLETED,
       title: 'Quest completed!',
       body: `You earned ${payload.xpAwarded} XP.`,
-      data: { questId: payload.questId, xpAwarded: payload.xpAwarded },
+      data,
     }).catch((err: unknown) => this.logger.warn(`notification failed: ${String(err)}`));
   }
 
   private async onAchievementUnlocked(payload: unknown): Promise<void> {
     if (!this.isAchievementUnlocked(payload)) return;
+    const data: Prisma.JsonObject = {
+      achievementId: payload.achievementId,
+      slug: payload.achievementSlug,
+    };
     await this.send({
       userId: payload.userId,
-      type: 'achievement.unlocked',
+      type: NotificationType.ACHIEVEMENT_UNLOCKED,
       title: 'Achievement unlocked',
       body: `New achievement: ${payload.achievementSlug}`,
-      data: { achievementId: payload.achievementId, slug: payload.achievementSlug },
+      data,
     }).catch((err: unknown) => this.logger.warn(`notification failed: ${String(err)}`));
   }
 
   private async onFriendRequestSent(payload: unknown): Promise<void> {
     if (!this.isFriendRequestSent(payload)) return;
+    const fromUser = await this.loadParticipantSummary(payload.requesterId);
+    const data: Prisma.JsonObject = { friendshipId: payload.friendshipId };
+    if (fromUser) {
+      data.fromUser = this.participantToJson(fromUser);
+    }
     await this.send({
       userId: payload.addresseeId,
-      type: 'friend.request',
+      type: NotificationType.FRIEND_REQUEST_RECEIVED,
       title: 'New friend request',
-      data: { requesterId: payload.requesterId },
+      data,
     }).catch((err: unknown) => this.logger.warn(`notification failed: ${String(err)}`));
   }
 
   private async onFriendRequestAccepted(payload: unknown): Promise<void> {
     if (!this.isFriendRequestAccepted(payload)) return;
+    const fromUser = await this.loadParticipantSummary(payload.addresseeId);
+    const data: Prisma.JsonObject = { friendshipId: payload.friendshipId };
+    if (fromUser) {
+      data.fromUser = this.participantToJson(fromUser);
+    }
     await this.send({
       userId: payload.requesterId,
-      type: 'friend.accepted',
+      type: NotificationType.FRIEND_REQUEST_ACCEPTED,
       title: 'Friend request accepted',
-      data: { addresseeId: payload.addresseeId },
+      data,
     }).catch((err: unknown) => this.logger.warn(`notification failed: ${String(err)}`));
+  }
+
+  private async onLevelUp(payload: unknown): Promise<void> {
+    if (!this.isLevelUp(payload)) return;
+    const data: Prisma.JsonObject = {
+      previousLevel: payload.previousLevel,
+      newLevel: payload.newLevel,
+    };
+    await this.send({
+      userId: payload.userId,
+      type: NotificationType.LEVEL_UP,
+      title: 'Level up!',
+      body: `You reached level ${payload.newLevel}.`,
+      data,
+    }).catch((err: unknown) => this.logger.warn(`notification failed: ${String(err)}`));
+  }
+
+  private async onBusinessQuestApproved(payload: unknown): Promise<void> {
+    if (!this.isBusinessQuestApproved(payload)) return;
+    const data: Prisma.JsonObject = { questId: payload.questId };
+    await this.send({
+      userId: payload.userId,
+      type: NotificationType.BUSINESS_QUEST_APPROVED,
+      title: 'Quest approved',
+      body: 'Your business quest is now published.',
+      data,
+    }).catch((err: unknown) => this.logger.warn(`notification failed: ${String(err)}`));
+  }
+
+  private participantToJson(p: ParticipantSummaryDto): Prisma.JsonObject {
+    const o: Prisma.JsonObject = {
+      id: p.id,
+      username: p.username,
+      level: p.level,
+    };
+    if (p.displayName !== undefined) o.displayName = p.displayName;
+    if (p.avatarUrl !== undefined) o.avatarUrl = p.avatarUrl;
+    return o;
+  }
+
+  private async loadParticipantSummary(userId: string): Promise<ParticipantSummaryDto | null> {
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, username: true, displayName: true, avatarUrl: true, level: true },
+    });
+    if (!u) return null;
+    return {
+      id: u.id,
+      username: u.username,
+      displayName: u.displayName,
+      avatarUrl: u.avatarUrl,
+      level: u.level,
+    };
   }
 
   // -------- type guards --------------------------------------------------------
@@ -138,6 +222,7 @@ export class NotificationsService implements OnModuleInit {
       typeof Reflect.get(v, 'xpAwarded') === 'number'
     );
   }
+
   private isAchievementUnlocked(v: unknown): v is AchievementUnlockedEvent {
     if (typeof v !== 'object' || v === null) return false;
     return (
@@ -146,14 +231,33 @@ export class NotificationsService implements OnModuleInit {
       typeof Reflect.get(v, 'achievementSlug') === 'string'
     );
   }
+
   private isFriendRequestSent(v: unknown): v is FriendRequestSentEvent {
     if (typeof v !== 'object' || v === null) return false;
     return (
       typeof Reflect.get(v, 'requesterId') === 'string' &&
-      typeof Reflect.get(v, 'addresseeId') === 'string'
+      typeof Reflect.get(v, 'addresseeId') === 'string' &&
+      typeof Reflect.get(v, 'friendshipId') === 'string'
     );
   }
+
   private isFriendRequestAccepted(v: unknown): v is FriendRequestAcceptedEvent {
     return this.isFriendRequestSent(v);
+  }
+
+  private isLevelUp(v: unknown): v is LevelUpEvent {
+    if (typeof v !== 'object' || v === null) return false;
+    return (
+      typeof Reflect.get(v, 'userId') === 'string' &&
+      typeof Reflect.get(v, 'previousLevel') === 'number' &&
+      typeof Reflect.get(v, 'newLevel') === 'number'
+    );
+  }
+
+  private isBusinessQuestApproved(v: unknown): v is BusinessQuestApprovedEvent {
+    if (typeof v !== 'object' || v === null) return false;
+    return (
+      typeof Reflect.get(v, 'userId') === 'string' && typeof Reflect.get(v, 'questId') === 'string'
+    );
   }
 }

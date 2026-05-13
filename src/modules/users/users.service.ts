@@ -1,8 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { FriendshipStatus, Prisma, QuestCompletionStatus, User } from '@prisma/client';
+import { buildPersonalRegisterRefLink } from '../../common/invite/build-register-links.util';
 import { progressFromXp } from '../../common/gamification/xp';
 import { PaginatedResult, paginate } from '../../common/responses/api-response';
 import { PrismaService } from '../../prisma/prisma.service';
+import { QuestCompletionsRepository } from '../quests/quest-completions.repository';
+import { ListUsersQueryDto, UserListSort } from './dto/list-users-query.dto';
+import { QuestHistoryItemDto } from './dto/quest-history.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserStatsDto } from './dto/user-stats.dto';
 import { UserDto } from './dto/user.dto';
@@ -13,12 +18,14 @@ export class UsersService {
   constructor(
     private readonly users: UsersRepository,
     private readonly prisma: PrismaService,
+    private readonly questCompletions: QuestCompletionsRepository,
+    private readonly config: ConfigService,
   ) {}
 
   async getById(id: string): Promise<UserDto> {
     const user = await this.users.findById(id);
     if (!user) throw new NotFoundException('User not found');
-    return UserDto.fromEntity(user);
+    return this.toUserDto(user);
   }
 
   async findRawById(id: string): Promise<User | null> {
@@ -33,7 +40,12 @@ export class UsersService {
     return this.users.findByUsername(username);
   }
 
-  async list(page: number, limit: number, search?: string): Promise<PaginatedResult<UserDto>> {
+  async list(query: ListUsersQueryDto): Promise<PaginatedResult<UserDto>> {
+    const page = query.page;
+    const limit = query.limit;
+    const search = query.search;
+    const sort = query.sort ?? UserListSort.CREATED_DESC;
+
     const where: Prisma.UserWhereInput | undefined = search
       ? {
           OR: [
@@ -45,17 +57,23 @@ export class UsersService {
       : undefined;
 
     const { items, total } = await this.users.list({
-      skip: (page - 1) * limit,
-      take: limit,
+      skip: query.skip,
+      take: query.take,
       where,
+      orderBy: userListOrderBy(sort),
     });
 
-    return paginate(items.map(UserDto.fromEntity), page, limit, total);
+    return paginate(
+      items.map((u) => this.toUserDto(u)),
+      page,
+      limit,
+      total,
+    );
   }
 
   async updateProfile(id: string, dto: UpdateUserDto): Promise<UserDto> {
     const user = await this.users.update(id, dto);
-    return UserDto.fromEntity(user);
+    return this.toUserDto(user);
   }
 
   async updateRefreshTokenHash(id: string, hash: string | null): Promise<void> {
@@ -80,9 +98,26 @@ export class UsersService {
     });
   }
 
+  async createWithCredentialsTx(
+    tx: Prisma.TransactionClient,
+    input: {
+      email: string;
+      username: string;
+      passwordHash: string;
+      displayName?: string;
+    },
+  ): Promise<User> {
+    return this.users.createWithTx(tx, {
+      email: input.email,
+      username: input.username,
+      passwordHash: input.passwordHash,
+      displayName: input.displayName,
+    });
+  }
+
   async setAvatarUrl(id: string, avatarUrl: string): Promise<UserDto> {
     const user = await this.users.update(id, { avatarUrl });
-    return UserDto.fromEntity(user);
+    return this.toUserDto(user);
   }
 
   async getStats(userId: string): Promise<UserStatsDto> {
@@ -168,6 +203,9 @@ export class UsersService {
       achievementsUnlocked,
       friendsCount,
       streakDays: user.streakDays,
+      longestStreakDays: user.longestStreakDays,
+      placesVisited: user.placesVisited,
+      distanceWalkedKm: Math.round((user.distanceWalkedM / 1000) * 100) / 100,
       completions: {
         started,
         completed,
@@ -176,5 +214,63 @@ export class UsersService {
       },
       byCategory,
     };
+  }
+
+  async getQuestHistory(
+    userId: string,
+    page: number,
+    limit: number,
+    status?: QuestCompletionStatus,
+  ): Promise<PaginatedResult<QuestHistoryItemDto>> {
+    const user = await this.users.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+
+    const effectiveStatus = status ?? QuestCompletionStatus.COMPLETED;
+
+    const { items, total } = await this.questCompletions.listForUser({
+      userId,
+      status: effectiveStatus,
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    const dtos: QuestHistoryItemDto[] = items.map((row) => ({
+      id: row.id,
+      questId: row.questId,
+      quest: {
+        id: row.quest.id,
+        slug: row.quest.slug,
+        title: row.quest.title,
+        coverImageUrl: row.quest.coverImageUrl,
+      },
+      status: row.status,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
+      xpEarned: row.xpAwarded,
+      durationMinutes: row.durationMin,
+    }));
+
+    return paginate(dtos, page, limit, total);
+  }
+
+  private toUserDto(user: User): UserDto {
+    const base = this.config.get<string>('app.frontendUrl') ?? 'http://localhost:5173';
+    const inviteLink = buildPersonalRegisterRefLink(base, user.username);
+    return UserDto.fromEntity(user, { inviteLink });
+  }
+}
+
+function userListOrderBy(sort: UserListSort): Prisma.UserOrderByWithRelationInput[] {
+  switch (sort) {
+    case UserListSort.XP_DESC:
+      return [{ xp: 'desc' }, { id: 'asc' }];
+    case UserListSort.XP_ASC:
+      return [{ xp: 'asc' }, { id: 'asc' }];
+    case UserListSort.LEVEL_DESC:
+      return [{ level: 'desc' }, { id: 'asc' }];
+    case UserListSort.USERNAME_ASC:
+      return [{ username: 'asc' }, { id: 'asc' }];
+    case UserListSort.CREATED_DESC:
+      return [{ createdAt: 'desc' }, { id: 'asc' }];
   }
 }

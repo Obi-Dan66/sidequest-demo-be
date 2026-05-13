@@ -24,4 +24,10 @@ export class RegisterDto {
   @IsString()
   @Length(1, 80)
   displayName?: string;
+
+  @ApiPropertyOptional({ description: 'Single-use invite token from email link' })
+  @IsOptional()
+  @IsString()
+  @Length(16, 128)
+  inviteToken?: string;
 }

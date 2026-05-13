@@ -10,12 +10,8 @@ export class AchievementsRepository {
     return this.prisma.achievement.findMany({ orderBy: { createdAt: 'asc' } });
   }
 
-  listForUser(userId: string): Promise<(UserAchievement & { achievement: Achievement })[]> {
-    return this.prisma.userAchievement.findMany({
-      where: { userId },
-      include: { achievement: true },
-      orderBy: { unlockedAt: 'desc' },
-    });
+  listForUser(userId: string): Promise<UserAchievement[]> {
+    return this.prisma.userAchievement.findMany({ where: { userId } });
   }
 
   findUserAchievement(userId: string, achievementId: string): Promise<UserAchievement | null> {

@@ -28,6 +28,10 @@ export class UserStatsDto {
   @ApiProperty() achievementsUnlocked!: number;
   @ApiProperty() friendsCount!: number;
   @ApiProperty() streakDays!: number;
+  @ApiProperty() longestStreakDays!: number;
+  @ApiProperty() placesVisited!: number;
+  @ApiProperty({ description: 'Total distance walked in kilometers' })
+  distanceWalkedKm!: number;
 
   @ApiProperty({ type: () => CompletionBreakdownDto })
   completions!: CompletionBreakdownDto;

@@ -24,6 +24,7 @@ export function buildSwaggerConfig(version: string): ReturnType<DocumentBuilder[
       'access-token',
     )
     .addTag('auth')
+    .addTag('invites')
     .addTag('users')
     .addTag('quests')
     .addTag('achievements')
@@ -31,6 +32,8 @@ export function buildSwaggerConfig(version: string): ReturnType<DocumentBuilder[
     .addTag('friendships')
     .addTag('businesses')
     .addTag('notifications')
+    .addTag('leaderboard')
+    .addTag('stats')
     .addTag('uploads')
     .addTag('health')
     .build();

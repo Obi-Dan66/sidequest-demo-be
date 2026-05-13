@@ -6,6 +6,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class BusinessesRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  findByOwnerId(ownerId: string): Promise<Business | null> {
+    return this.prisma.business.findFirst({
+      where: { ownerId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   findById(id: string): Promise<Business | null> {
     return this.prisma.business.findUnique({ where: { id } });
   }

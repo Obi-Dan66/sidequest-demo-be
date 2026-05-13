@@ -8,12 +8,12 @@ export class QuestCategoriesService {
 
   async listAll(): Promise<QuestCategoryDto[]> {
     const all = await this.categories.listAll();
-    return all.map(QuestCategoryDto.fromEntity);
+    return all.map((c) => QuestCategoryDto.fromEntity(c, c._count.quests));
   }
 
   async getBySlug(slug: string): Promise<QuestCategoryDto> {
     const category = await this.categories.findBySlug(slug);
     if (!category) throw new NotFoundException('Category not found');
-    return QuestCategoryDto.fromEntity(category);
+    return QuestCategoryDto.fromEntity(category, category._count.quests);
   }
 }

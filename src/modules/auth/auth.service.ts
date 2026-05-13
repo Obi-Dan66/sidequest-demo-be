@@ -4,12 +4,14 @@ import { JwtService } from '@nestjs/jwt';
 import { User } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { toAppRole } from '../../common/auth/role.mapper';
+import { PrismaService } from '../../prisma/prisma.service';
+import { InvitesService, ReferralTxOutcome } from '../invites/invites.service';
 import { UserDto } from '../users/dto/user.dto';
 import { UsersService } from '../users/users.service';
 import { AuthTokensDto } from './dto/auth-tokens.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { JwtAccessPayload } from './strategies/jwt.strategy';
+import { JwtAccessPayload, isJwtAccessPayload } from './strategies/jwt.strategy';
 
 interface JwtRefreshPayload {
   sub: string;
@@ -24,22 +26,43 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly invitesService: InvitesService,
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthTokensDto> {
-    const emailExists = await this.usersService.findRawByEmail(dto.email);
+    const email = dto.email.trim().toLowerCase();
+    const emailExists = await this.usersService.findRawByEmail(email);
     if (emailExists) throw new ConflictException('Email already registered');
 
     const usernameExists = await this.usersService.findRawByUsername(dto.username);
     if (usernameExists) throw new ConflictException('Username already taken');
 
     const passwordHash = await argon2.hash(dto.password);
-    const user = await this.usersService.createWithCredentials({
-      email: dto.email,
-      username: dto.username,
-      displayName: dto.displayName,
-      passwordHash,
+    const inviteToken = dto.inviteToken?.trim();
+
+    const { user, referral } = await this.prisma.runInTransaction(async (tx) => {
+      const u = await this.usersService.createWithCredentialsTx(tx, {
+        email,
+        username: dto.username,
+        displayName: dto.displayName,
+        passwordHash,
+      });
+      let referralOutcome: ReferralTxOutcome | undefined;
+      if (inviteToken) {
+        referralOutcome = await this.invitesService.consumeReferralInviteTx(
+          tx,
+          inviteToken,
+          u.id,
+          u.email,
+        );
+      }
+      return { user: u, referral: referralOutcome };
     });
+
+    if (referral) {
+      this.invitesService.emitReferralCompleted(referral);
+    }
 
     return this.issueTokens(user);
   }
@@ -75,6 +98,23 @@ export class AuthService {
     return this.issueTokens(user);
   }
 
+  async tryResolveViewerUserId(authorization?: string): Promise<string | undefined> {
+    if (!authorization?.startsWith('Bearer ') || authorization.length < 8) return undefined;
+    const token = authorization.slice(7).trim();
+    if (!token) return undefined;
+    try {
+      const decoded: unknown = await this.jwt.verifyAsync(token, {
+        secret: this.config.get<string>('auth.accessSecret') || 'replace-me-access',
+      });
+      if (!isJwtAccessPayload(decoded)) return undefined;
+      const user = await this.usersService.findRawById(decoded.sub);
+      if (!user || user.status !== 'ACTIVE') return undefined;
+      return user.id;
+    } catch {
+      return undefined;
+    }
+  }
+
   private async issueTokens(user: User): Promise<AuthTokensDto> {
     const accessPayload: JwtAccessPayload = {
       sub: user.id,
@@ -104,7 +144,9 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
-      user: UserDto.fromEntity(user),
+      user: UserDto.fromEntity(user, {
+        inviteLink: this.invitesService.buildPersonalInviteLink(user.username),
+      }),
     };
   }
 

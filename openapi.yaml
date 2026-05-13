@@ -113,6 +113,66 @@ paths:
         - users
       security:
         - access-token: []
+  /api/v1/users/me/quests/history:
+    get:
+      operationId: UsersController_getMyQuestHistory
+      summary: List quest history for the current user
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: limit
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 20
+            type: number
+        - name: search
+          required: false
+          in: query
+          description: Free-text search query
+          schema:
+            type: string
+        - name: status
+          required: false
+          in: query
+          schema:
+            default: COMPLETED
+            enum:
+              - STARTED
+              - COMPLETED
+              - ABANDONED
+              - EXPIRED
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/QuestHistoryItemDto"
+                  meta:
+                    type: object
+                    properties:
+                      pagination:
+                        $ref: "#/components/schemas/PaginationMeta"
+      tags:
+        - users
+      security:
+        - access-token: []
   /api/v1/users/me/avatar:
     post:
       operationId: UsersController_uploadAvatar
@@ -161,6 +221,12 @@ paths:
           description: Free-text search query
           schema:
             type: string
+        - name: sort
+          required: false
+          in: query
+          description: Stable ordering for discovery; ties break by user id ascending. Defaults to CREATED_DESC.
+          schema:
+            $ref: "#/components/schemas/UserListSort"
       responses:
         "200":
           description: ""
@@ -216,6 +282,72 @@ paths:
       responses:
         "200":
           description: ""
+      tags:
+        - users
+      security:
+        - access-token: []
+  /api/v1/users/{id}/quests/history:
+    get:
+      operationId: UsersController_getUserQuestHistory
+      summary: List quest history for a user (public stats)
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: limit
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 20
+            type: number
+        - name: search
+          required: false
+          in: query
+          description: Free-text search query
+          schema:
+            type: string
+        - name: status
+          required: false
+          in: query
+          schema:
+            default: COMPLETED
+            enum:
+              - STARTED
+              - COMPLETED
+              - ABANDONED
+              - EXPIRED
+            type: string
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/QuestHistoryItemDto"
+                  meta:
+                    type: object
+                    properties:
+                      pagination:
+                        $ref: "#/components/schemas/PaginationMeta"
       tags:
         - users
       security:
@@ -392,6 +524,11 @@ paths:
           description: CUID identifier
           schema:
             type: string
+        - name: authorization
+          required: true
+          in: header
+          schema:
+            type: string
       responses:
         "200":
           description: ""
@@ -457,6 +594,34 @@ paths:
         - quests
       security:
         - access-token: []
+  /api/v1/quests/{id}/locations/{locationId}/check-in:
+    post:
+      operationId: QuestsController_checkInAtLocation
+      summary: Check in at a quest waypoint (geolocation)
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: locationId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestCheckInBodyDto"
+      responses:
+        "201":
+          description: ""
+      tags:
+        - quests
+      security:
+        - access-token: []
   /api/v1/quests/{id}/complete:
     post:
       operationId: QuestsController_complete
@@ -470,6 +635,47 @@ paths:
             type: string
       responses:
         "201":
+          description: ""
+      tags:
+        - quests
+      security:
+        - access-token: []
+  /api/v1/quests/{id}/rate:
+    post:
+      operationId: QuestsController_rate
+      summary: Rate a quest (upserts)
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RateQuestDto"
+      responses:
+        "201":
+          description: ""
+      tags:
+        - quests
+      security:
+        - access-token: []
+    delete:
+      operationId: QuestsController_unrate
+      summary: Remove your rating from a quest
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+      responses:
+        "204":
           description: ""
       tags:
         - quests
@@ -500,6 +706,70 @@ paths:
           description: ""
       tags:
         - quests
+  /api/v1/invites:
+    post:
+      operationId: InvitesController_create
+      summary: Send a friend invite by email (stub email transport)
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInviteDto"
+      responses:
+        "201":
+          description: ""
+      tags:
+        - invites
+      security:
+        - access-token: []
+  /api/v1/invites/me:
+    get:
+      operationId: InvitesController_listMine
+      summary: List invites I have sent
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - invites
+      security:
+        - access-token: []
+  /api/v1/invites/preview/{token}:
+    get:
+      operationId: InvitesController_preview
+      summary: Public invite preview for signup
+      description: Token is the same value as the `invite` query param on the registration URL.
+      parameters:
+        - name: token
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags:
+        - invites
+  /api/v1/invites/{id}:
+    delete:
+      operationId: InvitesController_cancel
+      summary: Cancel a pending invite
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: CUID identifier
+          schema:
+            type: string
+      responses:
+        "204":
+          description: ""
+      tags:
+        - invites
+      security:
+        - access-token: []
   /api/v1/achievements:
     get:
       operationId: AchievementsController_listAll
@@ -633,7 +903,7 @@ paths:
   /api/v1/friendships/friends:
     get:
       operationId: FriendshipsController_listFriends
-      summary: List accepted friends as resolved users
+      summary: List accepted friends with presence and mutual quest count
       parameters: []
       responses:
         "200":
@@ -645,7 +915,7 @@ paths:
   /api/v1/friendships/pending:
     get:
       operationId: FriendshipsController_listPending
-      summary: List pending incoming friend requests
+      summary: List pending incoming friend requests with requester details
       parameters: []
       responses:
         "200":
@@ -657,15 +927,22 @@ paths:
   /api/v1/friendships/activity:
     get:
       operationId: FriendshipsController_activity
-      summary: Recent activity from my friends (quest completions + achievements)
+      summary: Friend activity feed (quest completions, starts, achievements, level-ups, place visits); pass meta.nextCursor as cursor for the next page
       parameters:
         - name: limit
           required: false
           in: query
           schema:
-            type: integer
             minimum: 1
             maximum: 100
+            default: 20
+            type: number
+        - name: cursor
+          required: false
+          in: query
+          description: ISO 8601 instant; only events strictly older than this are returned
+          schema:
+            type: string
       responses:
         "200":
           description: ""
@@ -792,6 +1069,72 @@ paths:
         - businesses
       security:
         - access-token: []
+  /api/v1/businesses/me:
+    get:
+      operationId: BusinessesController_getMine
+      summary: My business (owner portal)
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - businesses
+      security:
+        - access-token: []
+  /api/v1/businesses/me/metrics:
+    get:
+      operationId: BusinessesController_getMyMetrics
+      summary: Partner KPI metrics with period deltas
+      parameters:
+        - name: period
+          required: true
+          in: query
+          schema:
+            $ref: "#/components/schemas/BusinessMetricsPeriod"
+      responses:
+        "200":
+          description: ""
+      tags:
+        - businesses
+      security:
+        - access-token: []
+  /api/v1/businesses/me/quests/top:
+    get:
+      operationId: BusinessesController_getMyTopQuests
+      summary: Top quests by visits in the selected period
+      parameters:
+        - name: period
+          required: true
+          in: query
+          schema:
+            $ref: "#/components/schemas/BusinessMetricsPeriod"
+        - name: limit
+          required: true
+          in: query
+          schema:
+            minimum: 1
+            maximum: 50
+            default: 10
+            type: number
+      responses:
+        "200":
+          description: ""
+      tags:
+        - businesses
+      security:
+        - access-token: []
+  /api/v1/businesses/me/onboarding:
+    post:
+      operationId: BusinessesController_startOnboarding
+      summary: Mark partner onboarding as started
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - businesses
+      security:
+        - access-token: []
   /api/v1/businesses/{id}:
     get:
       operationId: BusinessesController_getById
@@ -859,6 +1202,22 @@ paths:
         - notifications
       security:
         - access-token: []
+  /api/v1/notifications/unread-count:
+    get:
+      operationId: NotificationsController_unreadCount
+      summary: Unread notification count
+      parameters: []
+      responses:
+        "200":
+          description: ""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationUnreadCountDto"
+      tags:
+        - notifications
+      security:
+        - access-token: []
   /api/v1/notifications/{id}/read:
     patch:
       operationId: NotificationsController_markRead
@@ -889,6 +1248,68 @@ paths:
         - notifications
       security:
         - access-token: []
+  /api/v1/leaderboard:
+    get:
+      operationId: LeaderboardController_get
+      summary: Explorer leaderboard
+      description: "Public. Optional `Authorization: Bearer` adds `myEntry` and sets `isMe` on rows. MONTH/WEEK XP sums completed quest XP in that period."
+      parameters:
+        - name: scope
+          required: false
+          in: query
+          schema:
+            default: GLOBAL
+            enum:
+              - GLOBAL
+              - CITY
+            type: string
+        - name: city
+          required: false
+          in: query
+          description: Required when scope=CITY (lowercase slug, e.g. prague)
+          schema:
+            type: string
+        - name: period
+          required: false
+          in: query
+          schema:
+            default: ALL_TIME
+            enum:
+              - ALL_TIME
+              - MONTH
+              - WEEK
+            type: string
+        - name: limit
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            default: 20
+            type: number
+        - name: authorization
+          required: true
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      tags:
+        - leaderboard
+      security:
+        - access-token: []
+  /api/v1/stats/public:
+    get:
+      operationId: StatsController_getPublic
+      summary: Public landing / social-proof counters
+      description: Cached ~5 minutes in-process. featuredQuest prefers Quest.featuredAt, else best-rated published, else newest published.
+      parameters: []
+      responses:
+        "200":
+          description: ""
+      tags:
+        - stats
   /api/v1/health:
     get:
       operationId: HealthController_check
@@ -917,6 +1338,8 @@ info:
 tags:
   - name: auth
     description: ""
+  - name: invites
+    description: ""
   - name: users
     description: ""
   - name: quests
@@ -930,6 +1353,10 @@ tags:
   - name: businesses
     description: ""
   - name: notifications
+    description: ""
+  - name: leaderboard
+    description: ""
+  - name: stats
     description: ""
   - name: uploads
     description: ""
@@ -958,6 +1385,9 @@ components:
           example: CorrectHorseBatteryStaple!
         displayName:
           type: string
+        inviteToken:
+          type: string
+          description: Single-use invite token from email link
       required:
         - email
         - username
@@ -1011,6 +1441,53 @@ components:
         - totalPages
         - hasNext
         - hasPrev
+    QuestHistoryQuestSnapshotDto:
+      type: object
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        title:
+          type: string
+        coverImageUrl:
+          type: object
+      required:
+        - id
+        - slug
+        - title
+    QuestHistoryItemDto:
+      type: object
+      properties:
+        id:
+          type: string
+        questId:
+          type: string
+        quest:
+          $ref: "#/components/schemas/QuestHistoryQuestSnapshotDto"
+        status:
+          type: string
+          enum:
+            - STARTED
+            - COMPLETED
+            - ABANDONED
+            - EXPIRED
+        startedAt:
+          format: date-time
+          type: string
+        completedAt:
+          type: object
+        xpEarned:
+          type: number
+        durationMinutes:
+          type: object
+      required:
+        - id
+        - questId
+        - quest
+        - status
+        - startedAt
+        - xpEarned
     UserDto:
       type: object
       properties:
@@ -1045,8 +1522,15 @@ components:
           type: number
         questsDone:
           type: number
+        title:
+          type: object
+          nullable: true
+          description: Gamified rank from level and quest count (capped by the lower tier), unless `titleOverride` is set
         streakDays:
           type: number
+        inviteLink:
+          type: string
+          description: Public registration URL using username ref (separate from single-use email invite tokens)
         createdAt:
           format: date-time
           type: string
@@ -1062,9 +1546,19 @@ components:
         - xp
         - level
         - questsDone
+        - title
         - streakDays
+        - inviteLink
         - createdAt
         - updatedAt
+    UserListSort:
+      type: string
+      enum:
+        - XP_DESC
+        - XP_ASC
+        - LEVEL_DESC
+        - CREATED_DESC
+        - USERNAME_ASC
     QuestLocationDto:
       type: object
       properties:
@@ -1085,12 +1579,86 @@ components:
         distanceM:
           type: number
           description: Distance in meters from the requested point
+        isCompleted:
+          type: boolean
+          description: Set when the request carries a valid access token
       required:
         - id
         - latitude
         - longitude
         - radiusM
         - orderIndex
+    ParticipantSummaryDto:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: object
+        avatarUrl:
+          type: object
+        level:
+          type: number
+      required:
+        - id
+        - username
+        - level
+    QuestCategoryDto:
+      type: object
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: object
+        iconUrl:
+          type: object
+        coverImageUrl:
+          type: object
+        colorHex:
+          type: object
+        questCount:
+          type: number
+      required:
+        - id
+        - slug
+        - name
+        - questCount
+    AchievementSummaryDto:
+      type: object
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        iconUrl:
+          type: object
+        xpBonus:
+          type: number
+      required:
+        - id
+        - slug
+        - name
+        - xpBonus
+    QuestRewardsDto:
+      type: object
+      properties:
+        xp:
+          type: number
+        achievements:
+          type: array
+          items:
+            $ref: "#/components/schemas/AchievementSummaryDto"
+      required:
+        - xp
+        - achievements
     QuestDto:
       type: object
       properties:
@@ -1146,6 +1714,24 @@ components:
         distanceM:
           type: number
           description: Distance in meters to the nearest location (nearby search)
+        tags:
+          type: array
+          items:
+            type: string
+        rating:
+          type: object
+        ratingCount:
+          type: number
+        participantCount:
+          type: number
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParticipantSummaryDto"
+        category:
+          $ref: "#/components/schemas/QuestCategoryDto"
+        rewards:
+          $ref: "#/components/schemas/QuestRewardsDto"
       required:
         - id
         - slug
@@ -1156,6 +1742,10 @@ components:
         - xpReward
         - createdAt
         - updatedAt
+        - tags
+        - ratingCount
+        - participantCount
+        - rewards
     CreateQuestLocationDto:
       type: object
       properties:
@@ -1255,6 +1845,38 @@ components:
           type: string
         endsAt:
           type: string
+    QuestCheckInBodyDto:
+      type: object
+      properties:
+        latitude:
+          type: number
+        longitude:
+          type: number
+        accuracyM:
+          type: number
+          description: GPS accuracy in meters
+      required:
+        - latitude
+        - longitude
+    RateQuestDto:
+      type: object
+      properties:
+        score:
+          type: number
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+      required:
+        - score
+    CreateInviteDto:
+      type: object
+      properties:
+        email:
+          type: string
+          example: friend@example.com
+      required:
+        - email
     CreateFriendshipDto:
       type: object
       properties:
@@ -1293,6 +1915,9 @@ components:
           type: object
         ownerId:
           type: object
+        onboardingStartedAt:
+          type: object
+          description: Set when the owner starts the partner onboarding flow
         createdAt:
           format: date-time
           type: string
@@ -1306,6 +1931,13 @@ components:
         - status
         - createdAt
         - updatedAt
+    BusinessMetricsPeriod:
+      type: string
+      enum:
+        - MONTH
+        - 7D
+        - 30D
+        - 90D
     CreateBusinessDto:
       type: object
       properties:
@@ -1328,6 +1960,34 @@ components:
       required:
         - slug
         - name
+    NotificationType:
+      type: string
+      enum:
+        - QUEST_COMPLETED
+        - ACHIEVEMENT_UNLOCKED
+        - FRIEND_REQUEST_RECEIVED
+        - FRIEND_REQUEST_ACCEPTED
+        - LEVEL_UP
+        - BUSINESS_QUEST_APPROVED
+    NotificationDataDto:
+      type: object
+      properties:
+        questId:
+          type: string
+        xpAwarded:
+          type: number
+        achievementId:
+          type: string
+        slug:
+          type: string
+        friendshipId:
+          type: string
+        fromUser:
+          $ref: "#/components/schemas/ParticipantSummaryDto"
+        previousLevel:
+          type: number
+        newLevel:
+          type: number
     NotificationDto:
       type: object
       properties:
@@ -1336,13 +1996,13 @@ components:
         userId:
           type: string
         type:
-          type: string
+          $ref: "#/components/schemas/NotificationType"
         title:
           type: string
         body:
           type: object
         data:
-          type: object
+          $ref: "#/components/schemas/NotificationDataDto"
         readAt:
           type: object
         createdAt:
@@ -1354,3 +2014,11 @@ components:
         - type
         - title
         - createdAt
+    NotificationUnreadCountDto:
+      type: object
+      properties:
+        count:
+          type: number
+          description: Notifications with readAt unset
+      required:
+        - count

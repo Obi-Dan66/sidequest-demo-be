@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { QuestCategoriesController } from './quest-categories.controller';
 import { QuestCategoriesRepository } from './quest-categories.repository';
 import { QuestCategoriesService } from './quest-categories.service';
@@ -8,6 +9,7 @@ import { QuestsRepository } from './quests.repository';
 import { QuestsService } from './quests.service';
 
 @Module({
+  imports: [forwardRef(() => AuthModule)],
   controllers: [QuestsController, QuestCategoriesController],
   providers: [
     QuestsService,

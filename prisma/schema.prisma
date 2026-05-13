@@ -76,6 +76,20 @@ enum BusinessStatus {
   SUSPENDED
 }
 
+enum VisitSource {
+  QUEST
+  QR
+  DIRECT
+  REFERRAL
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
 // ----------------------------------------------------------------------------
 // Users & auth
 // ----------------------------------------------------------------------------
@@ -91,32 +105,47 @@ model User {
   role         UserRole   @default(USER)
   status       UserStatus @default(ACTIVE)
 
+  /// Lowercase city slug for leaderboards (v1 default `prague`).
+  primaryCity String @default("prague")
+
   // Gamification
   xp                   Int       @default(0)
   level                Int       @default(1)
   questsDone           Int       @default(0)
+  /// When set (non-empty), replaces the level-derived title on `UserDto.title`.
+  titleOverride        String?
   streakDays           Int       @default(0)
+  longestStreakDays    Int       @default(0)
+  placesVisited        Int       @default(0)
+  distanceWalkedM      Int       @default(0)
   lastQuestCompletedAt DateTime?
 
   // Auth metadata
   lastLoginAt        DateTime?
   refreshTokenHash   String?
   emailVerifiedAt    DateTime?
+  lastSeenAt         DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  questCompletions   QuestCompletion[]
-  achievements       UserAchievement[]
+  questCompletions      QuestCompletion[]
+  questLocationCheckIns QuestLocationCheckIn[]
+  questRatings          QuestRating[]
+  achievements          UserAchievement[]
   authoredQuests     Quest[]            @relation("QuestAuthor")
   sentFriendRequests Friendship[]       @relation("FriendshipRequester")
   receivedFriendRequests Friendship[]   @relation("FriendshipAddressee")
   businesses         Business[]         @relation("BusinessOwner")
+  businessVisits     BusinessVisit[]
+  invitesSent        Invite[]           @relation("InviteInviter")
+  invitesReceived    Invite[]           @relation("InviteInvitee")
   notifications      Notification[]
 
   @@index([role])
   @@index([status])
+  @@index([status, primaryCity])
   @@index([level])
 }
 
@@ -166,17 +195,29 @@ model Quest {
   businessId String?
   business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
 
+  tags        String[]   @default([])
+  ratingAvg   Float?
+  ratingCount Int        @default(0)
+
   publishedAt DateTime?
   startsAt    DateTime?
   endsAt      DateTime?
 
+  /// Set by admins/curators to pin a quest on the public landing stats.
+  featuredAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  locations   QuestLocation[]
-  completions QuestCompletion[]
+  locations           QuestLocation[]
+  completions         QuestCompletion[]
+  locationCheckIns    QuestLocationCheckIn[]
+  ratings             QuestRating[]
+  rewardAchievements  QuestRewardAchievement[]
+  businessVisits      BusinessVisit[]
 
   @@index([status])
+  @@index([status, featuredAt])
   @@index([difficulty])
   @@index([categoryId])
   @@index([businessId])
@@ -202,6 +243,26 @@ model QuestLocation {
 
   @@index([questId])
   @@index([latitude, longitude])
+
+  checkIns QuestLocationCheckIn[]
+}
+
+model QuestLocationCheckIn {
+  id         String   @id @default(cuid())
+  userId     String
+  questId    String
+  locationId String
+  latitude   Float
+  longitude  Float
+  accuracyM  Int?
+  createdAt  DateTime @default(now())
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quest    Quest         @relation(fields: [questId], references: [id], onDelete: Cascade)
+  location QuestLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, locationId])
+  @@index([userId, questId])
 }
 
 model QuestCompletion {
@@ -213,9 +274,12 @@ model QuestCompletion {
   startedAt   DateTime  @default(now())
   completedAt DateTime?
   xpAwarded   Int       @default(0)
+  durationMin Int?
 
   // Snapshot of check-in proof - flexible JSON payload (timestamps, lat/lng pairs, photo refs)
   proof Json?
+
+  checkedInLocationIds String[] @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -225,7 +289,24 @@ model QuestCompletion {
 
   @@unique([userId, questId])
   @@index([status])
+  @@index([status, completedAt])
   @@index([userId])
+  @@index([questId])
+}
+
+model QuestRating {
+  id        String   @id @default(cuid())
+  userId    String
+  questId   String
+  score     Int
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quest Quest @relation(fields: [questId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questId])
   @@index([questId])
 }
 
@@ -244,11 +325,13 @@ model Achievement {
   // Evaluated by the gamification engine in code.
   criteria    Json
   xpBonus     Int             @default(0)
+  targetValue Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  unlockedBy UserAchievement[]
+  unlockedBy     UserAchievement[]
+  rewardedByQuests QuestRewardAchievement[]
 
   @@index([type])
 }
@@ -257,8 +340,8 @@ model UserAchievement {
   id            String      @id @default(cuid())
   userId        String
   achievementId String
-  unlockedAt    DateTime    @default(now())
-  progress      Json?
+  unlockedAt    DateTime?
+  progress      Int         @default(0)
 
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
@@ -266,6 +349,16 @@ model UserAchievement {
   @@unique([userId, achievementId])
   @@index([userId])
   @@index([achievementId])
+}
+
+model QuestRewardAchievement {
+  questId       String
+  achievementId String
+
+  quest       Quest       @relation(fields: [questId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@id([questId, achievementId])
 }
 
 // ----------------------------------------------------------------------------
@@ -313,13 +406,50 @@ model Business {
   ownerId String?
   owner   User?   @relation("BusinessOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
+  onboardingStartedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   quests Quest[]
+  visits BusinessVisit[]
 
   @@index([status])
   @@index([latitude, longitude])
+}
+
+model BusinessVisit {
+  id         String      @id @default(cuid())
+  businessId String
+  questId    String?
+  userId     String?
+  source     VisitSource @default(QUEST)
+  createdAt  DateTime    @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  quest    Quest?   @relation(fields: [questId], references: [id], onDelete: SetNull)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, createdAt])
+}
+
+model Invite {
+  id         String       @id @default(cuid())
+  token      String       @unique
+  inviterId  String
+  email      String
+  status     InviteStatus @default(PENDING)
+  sentAt     DateTime     @default(now())
+  acceptedAt DateTime?
+  inviteeId  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  inviter User  @relation("InviteInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee User? @relation("InviteInvitee", fields: [inviteeId], references: [id], onDelete: SetNull)
+
+  @@index([inviterId, status])
 }
 
 // ----------------------------------------------------------------------------
@@ -329,7 +459,7 @@ model Business {
 model Notification {
   id      String  @id @default(cuid())
   userId  String
-  type    String  // e.g. "quest.completed", "friend.request", "achievement.unlocked"
+  type    String  // canonical: QUEST_COMPLETED, FRIEND_REQUEST_RECEIVED, … (legacy dotted strings still readable)
   title   String
   body    String?
   // Free-form payload consumed by clients to build deep-links / actions.

@@ -7,19 +7,17 @@ WORKDIR /app
 
 RUN apk add --no-cache openssl libc6-compat
 
-COPY package*.json ./
+COPY package.json yarn.lock ./
 COPY prisma ./prisma
 
-RUN npm ci
+RUN corepack enable && corepack prepare yarn@1.22.22 --activate
+RUN yarn install --frozen-lockfile
 
 COPY tsconfig*.json nest-cli.json ./
 COPY src ./src
 
-RUN npx prisma generate
-RUN npm run build
-
-# Drop dev dependencies for the runtime image
-RUN npm prune --omit=dev
+RUN yarn prisma generate
+RUN yarn build
 
 
 # -------- Runtime stage --------
@@ -34,7 +32,7 @@ RUN apk add --no-cache openssl libc6-compat tini
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/package.json ./package.json
 
 EXPOSE 3000
 

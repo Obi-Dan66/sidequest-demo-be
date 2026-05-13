@@ -14,7 +14,7 @@ export interface JwtAccessPayload {
   role: AppRole;
 }
 
-function isJwtAccessPayload(value: unknown): value is JwtAccessPayload {
+export function isJwtAccessPayload(value: unknown): value is JwtAccessPayload {
   if (typeof value !== 'object' || value === null) return false;
   const sub = Reflect.get(value, 'sub');
   const email = Reflect.get(value, 'email');

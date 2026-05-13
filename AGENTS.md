@@ -7,6 +7,14 @@
 
 ---
 
+## Repository conventions (all agents)
+
+- **Package manager:** **Yarn Classic** (v1; lockfile `yarn.lock`). Use `yarn install` after clone. Do **not** use `npm install` or commit `package-lock.json` — the repo, Husky pre-commit, and the Docker image all assume Yarn.
+- **HTTP contract:** The checked-in `openapi.yaml` is generated from Nest DTOs via `yarn openapi:generate` (also run on pre-commit). Prefer updating Swagger decorators over hand-editing YAML.
+- **Runtime shape:** Nest modular monolith, Prisma + PostgreSQL, JWT access/refresh, global validation pipe, canonical `{ success, data, meta }` responses, in-process `EventsBus` (swap-in target for BullMQ), `@nestjs/schedule` for UTC maintenance crons (e.g. streak rollover).
+
+---
+
 ## 1. Backend Architect Agent
 
 **Owns:** holistic structure, module wiring, cross-cutting concerns, "where does this belong?" decisions.
@@ -25,7 +33,7 @@
 - `src/app.module.ts`
 - `src/common/**`
 - `src/config/**`
-- `nest-cli.json`, `tsconfig*.json`, `Dockerfile`, `docker-compose.yml`
+- `nest-cli.json`, `tsconfig*.json`, `Dockerfile`, `docker-compose.yml`, `yarn.lock`
 
 **Decision authority**
 

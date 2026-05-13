@@ -5,14 +5,15 @@
  *
  * Seeds:
  *   - admin + a handful of demo users (varied XP/level/streak)
- *   - 6 quest categories covering the SideQuest pillars
- *   - 20+ realistic Prague quests across viewpoints / parks / cafés / hidden / geocache / history / food
+ *   - 6 quest categories (cafes, history, hidden, nature, culture, geocache)
+ *   - ~10 published demo quests (subset of the full catalog)
  *   - a tiered achievement set (quest count, XP threshold, category explorer, social, streak, location visits)
  *
  * All operations use upsert-by-unique-key -> safe to re-run.
  */
 import {
   AchievementType,
+  BusinessStatus,
   Prisma,
   PrismaClient,
   QuestDifficulty,
@@ -148,28 +149,20 @@ const USERS: SeedUser[] = [
 
 const CATEGORIES: SeedCategory[] = [
   {
-    slug: 'viewpoints',
-    name: 'Viewpoints',
-    description: 'Climb high, breathe deep, look around.',
-    colorHex: '#2D9CDB',
-    iconUrl: 'https://cdn-icons-png.flaticon.com/512/2519/2519393.png',
-    coverImageUrl: 'https://images.unsplash.com/photo-1519677100203-a0e668c92439?w=1200',
-  },
-  {
-    slug: 'parks',
-    name: 'Parks & Gardens',
-    description: 'Green pockets between cobblestones.',
-    colorHex: '#27AE60',
-    iconUrl: 'https://cdn-icons-png.flaticon.com/512/2913/2913136.png',
-    coverImageUrl: 'https://images.unsplash.com/photo-1572276596237-5db2c3e16c5d?w=1200',
-  },
-  {
     slug: 'cafes',
     name: 'Cafés & Bakeries',
     description: 'Slow mornings, specialty coffee, warm pastries.',
     colorHex: '#F2994A',
     iconUrl: 'https://cdn-icons-png.flaticon.com/512/924/924514.png',
     coverImageUrl: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=1200',
+  },
+  {
+    slug: 'history',
+    name: 'History',
+    description: 'A thousand years in walking distance.',
+    colorHex: '#8B5E3C',
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/2942/2942035.png',
+    coverImageUrl: 'https://images.unsplash.com/photo-1519677100203-a0e668c92439?w=1200',
   },
   {
     slug: 'hidden',
@@ -180,20 +173,28 @@ const CATEGORIES: SeedCategory[] = [
     coverImageUrl: 'https://images.unsplash.com/photo-1467269204594-9661b134dd2b?w=1200',
   },
   {
+    slug: 'nature',
+    name: 'Nature & Outdoors',
+    description: 'Viewpoints, parks, riverbanks, and green escapes.',
+    colorHex: '#27AE60',
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/2913/2913136.png',
+    coverImageUrl: 'https://images.unsplash.com/photo-1572276596237-5db2c3e16c5d?w=1200',
+  },
+  {
+    slug: 'culture',
+    name: 'Culture & Arts',
+    description: 'Museums, architecture, and living heritage.',
+    colorHex: '#2D9CDB',
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/2519/2519393.png',
+    coverImageUrl: 'https://images.unsplash.com/photo-1519677100203-a0e668c92439?w=1200',
+  },
+  {
     slug: 'geocache',
     name: 'Geocache',
     description: 'Tiny mysteries hidden in plain sight.',
     colorHex: '#EB5757',
     iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
     coverImageUrl: 'https://images.unsplash.com/photo-1483728642387-6c3bdd6c93e5?w=1200',
-  },
-  {
-    slug: 'history',
-    name: 'History',
-    description: 'A thousand years in walking distance.',
-    colorHex: '#8B5E3C',
-    iconUrl: 'https://cdn-icons-png.flaticon.com/512/2942/2942035.png',
-    coverImageUrl: 'https://images.unsplash.com/photo-1519677100203-a0e668c92439?w=1200',
   },
 ];
 
@@ -208,7 +209,7 @@ const QUESTS: SeedQuest[] = [
     difficulty: QuestDifficulty.MEDIUM,
     xpReward: 200,
     estimatedDurationMin: 90,
-    categorySlug: 'viewpoints',
+    categorySlug: 'nature',
     imageUrl: 'https://images.unsplash.com/photo-1605281317010-fe5ffe798166?w=800',
     coverImageUrl: 'https://images.unsplash.com/photo-1605281317010-fe5ffe798166?w=1600',
     locations: [
@@ -226,7 +227,7 @@ const QUESTS: SeedQuest[] = [
     difficulty: QuestDifficulty.EASY,
     xpReward: 120,
     estimatedDurationMin: 60,
-    categorySlug: 'viewpoints',
+    categorySlug: 'nature',
     imageUrl: 'https://images.unsplash.com/photo-1601233749202-95d04d5b3c00?w=800',
     coverImageUrl: 'https://images.unsplash.com/photo-1601233749202-95d04d5b3c00?w=1600',
     locations: [
@@ -244,7 +245,7 @@ const QUESTS: SeedQuest[] = [
     difficulty: QuestDifficulty.EASY,
     xpReward: 100,
     estimatedDurationMin: 75,
-    categorySlug: 'viewpoints',
+    categorySlug: 'nature',
     imageUrl: 'https://images.unsplash.com/photo-1467269204594-9661b134dd2b?w=800',
     coverImageUrl: 'https://images.unsplash.com/photo-1467269204594-9661b134dd2b?w=1600',
     locations: [
@@ -261,7 +262,7 @@ const QUESTS: SeedQuest[] = [
     difficulty: QuestDifficulty.EASY,
     xpReward: 80,
     estimatedDurationMin: 45,
-    categorySlug: 'viewpoints',
+    categorySlug: 'nature',
     imageUrl: 'https://images.unsplash.com/photo-1519677100203-a0e668c92439?w=800',
     coverImageUrl: 'https://images.unsplash.com/photo-1519677100203-a0e668c92439?w=1600',
     locations: [{ name: 'Riegrovy Sady Hillside', latitude: 50.0795, longitude: 14.4439 }],
@@ -277,7 +278,7 @@ const QUESTS: SeedQuest[] = [
     difficulty: QuestDifficulty.EASY,
     xpReward: 90,
     estimatedDurationMin: 40,
-    categorySlug: 'parks',
+    categorySlug: 'nature',
     imageUrl: 'https://images.unsplash.com/photo-1572276596237-5db2c3e16c5d?w=800',
     coverImageUrl: 'https://images.unsplash.com/photo-1572276596237-5db2c3e16c5d?w=1600',
     locations: [
@@ -294,7 +295,7 @@ const QUESTS: SeedQuest[] = [
     difficulty: QuestDifficulty.EASY,
     xpReward: 80,
     estimatedDurationMin: 45,
-    categorySlug: 'parks',
+    categorySlug: 'nature',
     imageUrl: 'https://images.unsplash.com/photo-1530841344095-c7e6a2b1bdbf?w=800',
     coverImageUrl: 'https://images.unsplash.com/photo-1530841344095-c7e6a2b1bdbf?w=1600',
     locations: [
@@ -312,7 +313,7 @@ const QUESTS: SeedQuest[] = [
     difficulty: QuestDifficulty.MEDIUM,
     xpReward: 140,
     estimatedDurationMin: 90,
-    categorySlug: 'parks',
+    categorySlug: 'nature',
     imageUrl: 'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=800',
     coverImageUrl: 'https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=1600',
     locations: [
@@ -350,7 +351,7 @@ const QUESTS: SeedQuest[] = [
     difficulty: QuestDifficulty.MEDIUM,
     xpReward: 180,
     estimatedDurationMin: 120,
-    categorySlug: 'cafes',
+    categorySlug: 'culture',
     imageUrl: 'https://images.unsplash.com/photo-1442512595331-e89e73853f31?w=800',
     coverImageUrl: 'https://images.unsplash.com/photo-1442512595331-e89e73853f31?w=1600',
     locations: [
@@ -554,7 +555,7 @@ const QUESTS: SeedQuest[] = [
     difficulty: QuestDifficulty.MEDIUM,
     xpReward: 200,
     estimatedDurationMin: 120,
-    categorySlug: 'history',
+    categorySlug: 'culture',
     imageUrl: 'https://images.unsplash.com/photo-1577083553180-3d2c0ad6f835?w=800',
     coverImageUrl: 'https://images.unsplash.com/photo-1577083553180-3d2c0ad6f835?w=1600',
     locations: [
@@ -565,6 +566,25 @@ const QUESTS: SeedQuest[] = [
     ],
   },
 ];
+
+const QUEST_PUBLISHED_SLUGS = [
+  'petrin-summit',
+  'specialty-coffee-crawl',
+  'narrowest-street',
+  'cache-old-town-cellar',
+  'old-town-square-mysteries',
+  'art-nouveau-cafe-tour',
+  'stromovka-stroll',
+  'prague-castle-circuit',
+  'letna-beer-garden',
+  'jewish-quarter-walk',
+] as const;
+
+const QUESTS_PUBLISHED: SeedQuest[] = QUEST_PUBLISHED_SLUGS.map((slug) => {
+  const q = QUESTS.find((x) => x.slug === slug);
+  if (!q) throw new Error(`Missing quest slug for published demo set: ${slug}`);
+  return q;
+});
 
 const ACHIEVEMENTS: SeedAchievement[] = [
   {
@@ -624,10 +644,10 @@ const ACHIEVEMENTS: SeedAchievement[] = [
   {
     slug: 'view-collector',
     name: 'View Collector',
-    description: 'Complete 3 Viewpoint quests.',
+    description: 'Complete 3 Nature & Outdoors quests.',
     iconUrl: 'https://cdn-icons-png.flaticon.com/512/2519/2519393.png',
     type: AchievementType.CATEGORY_EXPLORER,
-    criteria: { categorySlug: 'viewpoints', minQuests: 3 },
+    criteria: { categorySlug: 'nature', minQuests: 3 },
     xpBonus: 200,
   },
   {
@@ -656,6 +676,24 @@ const ACHIEVEMENTS: SeedAchievement[] = [
     type: AchievementType.CATEGORY_EXPLORER,
     criteria: { categorySlug: 'geocache', minQuests: 3 },
     xpBonus: 350,
+  },
+  {
+    slug: 'culture-curious',
+    name: 'Culture Curious',
+    description: 'Complete 2 Culture & Arts quests.',
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/2942/2942035.png',
+    type: AchievementType.CATEGORY_EXPLORER,
+    criteria: { categorySlug: 'culture', minQuests: 2 },
+    xpBonus: 200,
+  },
+  {
+    slug: 'campaign-placeholder',
+    name: 'Campaign Placeholder',
+    description: 'Reserved for bespoke campaign rules (CUSTOM).',
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/2583/2583319.png',
+    type: AchievementType.CUSTOM,
+    criteria: {},
+    xpBonus: 0,
   },
   {
     slug: 'cartographer',
@@ -724,6 +762,7 @@ async function seedUsers(): Promise<Map<string, string>> {
         bio: u.bio,
         avatarUrl: u.avatarUrl,
         role: u.role,
+        primaryCity: 'prague',
       },
     });
     idByEmail.set(u.email, row.id);
@@ -751,7 +790,7 @@ async function seedCategories(): Promise<Map<string, string>> {
 }
 
 async function seedQuests(authorId: string, categoryIdBySlug: Map<string, string>): Promise<void> {
-  for (const q of QUESTS) {
+  for (const q of QUESTS_PUBLISHED) {
     const categoryId = categoryIdBySlug.get(q.categorySlug);
     if (!categoryId) throw new Error(`Missing category ${q.categorySlug} for quest ${q.slug}`);
 
@@ -859,6 +898,28 @@ async function seedFriendships(idByEmail: Map<string, string>): Promise<void> {
   }
 }
 
+async function seedDemoBusiness(ownerId: string): Promise<void> {
+  await prisma.business.upsert({
+    where: { slug: 'demo-prague-tours' },
+    update: {
+      name: 'Demo Prague Tours',
+      description: 'Demo partner for the business portal.',
+      status: BusinessStatus.VERIFIED,
+      ownerId,
+    },
+    create: {
+      slug: 'demo-prague-tours',
+      name: 'Demo Prague Tours',
+      description: 'Demo partner for the business portal.',
+      status: BusinessStatus.VERIFIED,
+      owner: { connect: { id: ownerId } },
+      latitude: 50.0755,
+      longitude: 14.4378,
+      address: 'Staroměstské nám. 1, Prague',
+    },
+  });
+}
+
 async function main(): Promise<void> {
   console.log('Seeding SideQuest database...');
   try {
@@ -870,10 +931,11 @@ async function main(): Promise<void> {
     await seedQuests(adminId, categoryIdBySlug);
     await seedAchievements();
     await seedFriendships(userIdByEmail);
+    await seedDemoBusiness(adminId);
 
     console.log(
       `Seed complete: ${USERS.length} users, ${CATEGORIES.length} categories, ` +
-        `${QUESTS.length} quests, ${ACHIEVEMENTS.length} achievements.`,
+        `${QUESTS_PUBLISHED.length} published quests, ${ACHIEVEMENTS.length} achievements, 1 demo business.`,
     );
   } catch (err) {
     console.error('Seed failed:', err);

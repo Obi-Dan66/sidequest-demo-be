@@ -1,26 +1,49 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, Quest, QuestLocation } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { questCategoryPublishedCountInclude } from './quest-category-published.include';
 
-export interface QuestWithLocations extends Quest {
-  locations: QuestLocation[];
-}
+const QUEST_INCLUDE = {
+  locations: { orderBy: { orderIndex: 'asc' } },
+  category: {
+    include: questCategoryPublishedCountInclude,
+  },
+  _count: { select: { completions: true } },
+  completions: {
+    take: 6,
+    orderBy: { startedAt: 'desc' },
+    select: {
+      user: {
+        select: { id: true, username: true, displayName: true, avatarUrl: true, level: true },
+      },
+    },
+  },
+  rewardAchievements: {
+    select: {
+      achievement: {
+        select: { id: true, slug: true, name: true, iconUrl: true, xpBonus: true },
+      },
+    },
+  },
+} satisfies Prisma.QuestInclude;
+
+export type QuestWithEnrichment = Prisma.QuestGetPayload<{ include: typeof QUEST_INCLUDE }>;
 
 @Injectable()
 export class QuestsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findById(id: string): Promise<QuestWithLocations | null> {
+  findById(id: string): Promise<QuestWithEnrichment | null> {
     return this.prisma.quest.findUnique({
       where: { id },
-      include: { locations: { orderBy: { orderIndex: 'asc' } } },
+      include: QUEST_INCLUDE,
     });
   }
 
-  findBySlug(slug: string): Promise<QuestWithLocations | null> {
+  findBySlug(slug: string): Promise<QuestWithEnrichment | null> {
     return this.prisma.quest.findUnique({
       where: { slug },
-      include: { locations: { orderBy: { orderIndex: 'asc' } } },
+      include: QUEST_INCLUDE,
     });
   }
 
@@ -29,46 +52,42 @@ export class QuestsRepository {
     take: number;
     where?: Prisma.QuestWhereInput;
     orderBy?: Prisma.QuestOrderByWithRelationInput;
-  }): Promise<{ items: QuestWithLocations[]; total: number }> {
+  }): Promise<{ items: QuestWithEnrichment[]; total: number }> {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.quest.findMany({
         skip: params.skip,
         take: params.take,
         where: params.where,
         orderBy: params.orderBy ?? { createdAt: 'desc' },
-        include: { locations: { orderBy: { orderIndex: 'asc' } } },
+        include: QUEST_INCLUDE,
       }),
       this.prisma.quest.count({ where: params.where }),
     ]);
     return { items, total };
   }
 
-  create(data: Prisma.QuestCreateInput): Promise<QuestWithLocations> {
+  create(data: Prisma.QuestCreateInput): Promise<QuestWithEnrichment> {
     return this.prisma.quest.create({
       data,
-      include: { locations: { orderBy: { orderIndex: 'asc' } } },
+      include: QUEST_INCLUDE,
     });
   }
 
-  update(id: string, data: Prisma.QuestUpdateInput): Promise<QuestWithLocations> {
+  update(id: string, data: Prisma.QuestUpdateInput): Promise<QuestWithEnrichment> {
     return this.prisma.quest.update({
       where: { id },
       data,
-      include: { locations: { orderBy: { orderIndex: 'asc' } } },
+      include: QUEST_INCLUDE,
     });
   }
 
-  delete(id: string): Promise<QuestWithLocations> {
+  delete(id: string): Promise<QuestWithEnrichment> {
     return this.prisma.quest.delete({
       where: { id },
-      include: { locations: { orderBy: { orderIndex: 'asc' } } },
+      include: QUEST_INCLUDE,
     });
   }
 
-  /**
-   * Bounding-box prefilter using indexed (latitude, longitude) columns.
-   * Caller refines distance using GeoService.haversineMeters().
-   */
   findWithinBoundingBox(params: {
     minLat: number;
     maxLat: number;
@@ -76,7 +95,7 @@ export class QuestsRepository {
     maxLng: number;
     where?: Prisma.QuestWhereInput;
     limit?: number;
-  }): Promise<QuestWithLocations[]> {
+  }): Promise<QuestWithEnrichment[]> {
     return this.prisma.quest.findMany({
       where: {
         ...params.where,
@@ -87,7 +106,7 @@ export class QuestsRepository {
           },
         },
       },
-      include: { locations: { orderBy: { orderIndex: 'asc' } } },
+      include: QUEST_INCLUDE,
       take: params.limit ?? 100,
     });
   }

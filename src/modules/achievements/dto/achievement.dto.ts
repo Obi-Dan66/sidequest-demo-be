@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Achievement, AchievementType, UserAchievement } from '@prisma/client';
+import { Achievement, AchievementType } from '@prisma/client';
 
 export class AchievementDto {
   @ApiProperty() id!: string;
@@ -27,19 +27,20 @@ export class AchievementDto {
   }
 }
 
+export class AchievementProgressDto {
+  @ApiProperty() current!: number;
+  @ApiProperty() target!: number;
+}
+
 export class UserAchievementDto {
   @ApiProperty() id!: string;
-  @ApiProperty() achievementId!: string;
-  @ApiProperty() unlockedAt!: Date;
-  @ApiProperty({ type: () => AchievementDto, required: false })
-  achievement?: AchievementDto;
-
-  static fromEntity(ua: UserAchievement & { achievement?: Achievement }): UserAchievementDto {
-    return {
-      id: ua.id,
-      achievementId: ua.achievementId,
-      unlockedAt: ua.unlockedAt,
-      achievement: ua.achievement ? AchievementDto.fromEntity(ua.achievement) : undefined,
-    };
-  }
+  @ApiProperty() slug!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty() description!: string;
+  @ApiPropertyOptional() iconUrl!: string | null;
+  @ApiProperty({ enum: AchievementType }) type!: AchievementType;
+  @ApiProperty() xpBonus!: number;
+  @ApiPropertyOptional() unlockedAt!: Date | null;
+  @ApiPropertyOptional({ type: () => AchievementProgressDto })
+  progress!: AchievementProgressDto | null;
 }
